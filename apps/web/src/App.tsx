@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 
+import { parseDocument, type ParsedDocument } from './features/parsing/api'
+import { ParsePreview } from './features/parsing/ParsePreview'
 import {
   DEFAULT_MAX_UPLOAD_BYTES,
   deleteUpload,
@@ -54,6 +56,8 @@ function App() {
     useState<UploadedDocument | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState(0)
+  const [parseResult, setParseResult] = useState<ParsedDocument | null>(null)
+  const [parseError, setParseError] = useState<string | null>(null)
   const uploadController = useRef<AbortController | null>(null)
 
   const health = useQuery({
@@ -80,7 +84,11 @@ function App() {
       setUploadError(null)
       setUploadProgress(0)
     },
-    onSuccess: (uploaded) => setUploadedDocument(uploaded),
+    onSuccess: (uploaded) => {
+      setUploadedDocument(uploaded)
+      setParseResult(null)
+      setParseError(null)
+    },
     onError: (error) => {
       setUploadError(
         error instanceof Error ? error.message : '上传失败，请稍后重试',
@@ -97,10 +105,23 @@ function App() {
       setUploadedDocument(null)
       setUploadError(null)
       setUploadProgress(0)
+      setParseResult(null)
+      setParseError(null)
     },
     onError: (error) => {
       setUploadError(
         error instanceof Error ? error.message : '删除失败，请稍后重试',
+      )
+    },
+  })
+
+  const parseMutation = useMutation({
+    mutationFn: parseDocument,
+    onMutate: () => setParseError(null),
+    onSuccess: setParseResult,
+    onError: (error) => {
+      setParseError(
+        error instanceof Error ? error.message : '解析失败，请稍后重试',
       )
     },
   })
@@ -166,9 +187,9 @@ function App() {
         <section className="grid border-b border-black/10 lg:grid-cols-[1.25fr_0.75fr]">
           <div className="px-5 py-14 md:px-10 md:py-20 lg:border-r lg:border-black/10 lg:px-16 lg:py-24">
             <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-[#31533f]/20 bg-[#dfe8dc] px-3 py-1.5 text-xs font-semibold text-[#31533f]">
-              <span>阶段 2</span>
+              <span>阶段 3</span>
               <span className="h-3 w-px bg-[#31533f]/25" />
-              <span>TXT 临时处理</span>
+              <span>章节与引用定位</span>
             </div>
 
             <h1 className="max-w-3xl font-serif text-5xl font-semibold leading-[1.04] tracking-[-0.045em] text-[#17221b] md:text-7xl">
@@ -196,6 +217,15 @@ function App() {
               onFile={handleFile}
             />
 
+            {uploadedDocument && (
+              <ParsePreview
+                error={parseError}
+                isParsing={parseMutation.isPending}
+                result={parseResult}
+                onParse={() => parseMutation.mutate(uploadedDocument.task_id)}
+              />
+            )}
+
             <div className="mt-4 flex flex-wrap items-center gap-4">
               <a
                 href="#workflow"
@@ -209,7 +239,7 @@ function App() {
           <aside className="flex min-h-[430px] flex-col justify-between bg-[#24382c] p-6 text-[#e9eee7] md:p-10 lg:p-12">
             <div className="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-white/45">
               <span>Analysis workspace</span>
-              <span>{uploadedDocument ? '01 / 04' : '00 / 04'}</span>
+              <span>{parseResult ? '02 / 04' : uploadedDocument ? '01 / 04' : '00 / 04'}</span>
             </div>
 
             <div className="my-12 space-y-3">
@@ -244,7 +274,7 @@ function App() {
           className="grid gap-px bg-black/10 md:grid-cols-3"
         >
           {[
-            ['输入', 'TXT 小说正文', '校验文件、识别编码并切分章节'],
+            ['输入', 'TXT 小说正文', '校验编码、识别章节并建立引用坐标'],
             ['分析', 'Agents + Skills', '分层抽取、归并信息并核验引用'],
             ['输出', '可编辑小说图谱', '查看、修正、生图、仿写与导出'],
           ].map(([eyebrow, title, description], index) => (

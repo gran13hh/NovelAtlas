@@ -13,6 +13,7 @@ from novelatlas.services.temporary_storage import TemporaryUploadStorage
 
 from . import __version__
 from .config import Settings
+from .routes.documents import router as documents_router
 from .routes.uploads import router as uploads_router
 
 
@@ -71,6 +72,7 @@ def create_app(
         lifespan=lifespan,
     )
     application.include_router(uploads_router)
+    application.include_router(documents_router)
 
     @application.get(
         "/api/health",

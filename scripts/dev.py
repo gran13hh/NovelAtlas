@@ -67,7 +67,11 @@ def check_prerequisites() -> str:
         [
             str(VENV_PYTHON),
             "-c",
-            "import fastapi, uvicorn; print('Python dependencies: OK')",
+            (
+                "import fastapi, tiktoken, uvicorn; "
+                "import apps.api.novelatlas_api.main; "
+                "print('Python dependencies: OK')"
+            ),
         ],
         cwd=PROJECT_ROOT,
         check=False,

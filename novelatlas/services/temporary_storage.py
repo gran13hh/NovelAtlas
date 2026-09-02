@@ -15,6 +15,10 @@ class UploadNotFoundError(FileNotFoundError):
     """Raised when a temporary upload does not exist or has expired."""
 
 
+class ArtifactNotFoundError(FileNotFoundError):
+    """Raised when a task exists but a requested derived artifact does not."""
+
+
 class TemporaryUploadStorage:
     """Store normalized source text until a task is deleted or expires."""
 
@@ -95,6 +99,34 @@ class TemporaryUploadStorage:
         self.get(task_id)
         return self._task_directory(task_id) / "source.txt"
 
+    def write_json_artifact(
+        self,
+        task_id: str,
+        name: str,
+        payload: str,
+    ) -> Path:
+        """Atomically write one derived JSON artifact inside a live task."""
+
+        artifact_path = self._artifact_path(task_id, name)
+        temporary_path = artifact_path.with_name(
+            f".{artifact_path.name}.{uuid4().hex}.tmp"
+        )
+        try:
+            temporary_path.write_text(payload, encoding="utf-8")
+            temporary_path.replace(artifact_path)
+        finally:
+            temporary_path.unlink(missing_ok=True)
+        return artifact_path
+
+    def read_json_artifact(self, task_id: str, name: str) -> str:
+        """Read one derived JSON artifact from a live task."""
+
+        artifact_path = self._artifact_path(task_id, name)
+        try:
+            return artifact_path.read_text(encoding="utf-8")
+        except FileNotFoundError as error:
+            raise ArtifactNotFoundError(name) from error
+
     def delete(self, task_id: str) -> bool:
         """Delete a task directory and all temporary contents."""
 
@@ -144,6 +176,16 @@ class TemporaryUploadStorage:
             shutil.rmtree(self.root, ignore_errors=True)
 
     def _task_directory(self, task_id: str) -> Path:
-        if len(task_id) != 32 or any(character not in "0123456789abcdef" for character in task_id):
+        if len(task_id) != 32 or any(
+            character not in "0123456789abcdef" for character in task_id
+        ):
             raise UploadNotFoundError(task_id)
         return self.root / task_id
+
+    def _artifact_path(self, task_id: str, name: str) -> Path:
+        self.get(task_id)
+        if not name or any(
+            character not in "abcdefghijklmnopqrstuvwxyz-_" for character in name
+        ):
+            raise ValueError("invalid artifact name")
+        return self._task_directory(task_id) / f"{name}.json"
