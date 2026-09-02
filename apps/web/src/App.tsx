@@ -1,4 +1,14 @@
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
+import { useMutation, useQuery } from '@tanstack/react-query'
+
+import {
+  DEFAULT_MAX_UPLOAD_BYTES,
+  deleteUpload,
+  fetchUploadConstraints,
+  uploadTxt,
+  type UploadedDocument,
+} from './features/upload/api'
+import { UploadPanel } from './features/upload/UploadPanel'
 
 type HealthResponse = {
   status: 'ok'
@@ -40,12 +50,83 @@ async function fetchHealth(): Promise<HealthResponse> {
 }
 
 function App() {
+  const [uploadedDocument, setUploadedDocument] =
+    useState<UploadedDocument | null>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const uploadController = useRef<AbortController | null>(null)
+
   const health = useQuery({
     queryKey: ['api-health'],
     queryFn: fetchHealth,
     retry: 1,
     refetchInterval: 30_000,
   })
+  const uploadConstraints = useQuery({
+    queryKey: ['upload-constraints'],
+    queryFn: fetchUploadConstraints,
+    retry: 1,
+  })
+  const maxUploadBytes =
+    uploadConstraints.data?.max_upload_bytes ?? DEFAULT_MAX_UPLOAD_BYTES
+
+  const uploadMutation = useMutation({
+    mutationFn: ({ file, controller }: { file: File; controller: AbortController }) =>
+      uploadTxt(file, {
+        signal: controller.signal,
+        onProgress: setUploadProgress,
+      }),
+    onMutate: () => {
+      setUploadError(null)
+      setUploadProgress(0)
+    },
+    onSuccess: (uploaded) => setUploadedDocument(uploaded),
+    onError: (error) => {
+      setUploadError(
+        error instanceof Error ? error.message : '上传失败，请稍后重试',
+      )
+    },
+    onSettled: () => {
+      uploadController.current = null
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteUpload,
+    onSuccess: () => {
+      setUploadedDocument(null)
+      setUploadError(null)
+      setUploadProgress(0)
+    },
+    onError: (error) => {
+      setUploadError(
+        error instanceof Error ? error.message : '删除失败，请稍后重试',
+      )
+    },
+  })
+
+  useEffect(() => () => uploadController.current?.abort(), [])
+
+  const handleFile = (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.txt')) {
+      setUploadError('仅支持 .txt 文件')
+      return
+    }
+    if (file.size === 0) {
+      setUploadError('TXT 文件为空')
+      return
+    }
+    if (file.size > maxUploadBytes) {
+      setUploadError(
+        `TXT 文件不能超过 ${(maxUploadBytes / 1024 / 1024).toFixed(0)} MiB`,
+      )
+      return
+    }
+
+    const controller = new AbortController()
+    uploadController.current = controller
+    uploadMutation.mutate({ file, controller })
+  }
 
   const apiState = health.isPending
     ? { label: '正在连接 API', tone: 'bg-amber-400' }
@@ -85,9 +166,9 @@ function App() {
         <section className="grid border-b border-black/10 lg:grid-cols-[1.25fr_0.75fr]">
           <div className="px-5 py-14 md:px-10 md:py-20 lg:border-r lg:border-black/10 lg:px-16 lg:py-24">
             <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-[#31533f]/20 bg-[#dfe8dc] px-3 py-1.5 text-xs font-semibold text-[#31533f]">
-              <span>阶段 1</span>
+              <span>阶段 2</span>
               <span className="h-3 w-px bg-[#31533f]/25" />
-              <span>前后端骨架</span>
+              <span>TXT 临时处理</span>
             </div>
 
             <h1 className="max-w-3xl font-serif text-5xl font-semibold leading-[1.04] tracking-[-0.045em] text-[#17221b] md:text-7xl">
@@ -99,14 +180,23 @@ function App() {
               上传小说文本后，由 AI Agent 分阶段整理剧情、人物、文风与世界观；每条关键结论都保留返回原文的线索。
             </p>
 
-            <div className="mt-10 flex flex-wrap items-center gap-4">
-              <button
-                type="button"
-                disabled
-                className="cursor-not-allowed rounded-xl bg-[#1e3227] px-5 py-3.5 text-sm font-semibold text-white/65 shadow-[0_10px_30px_rgba(30,50,39,0.18)]"
-              >
-                TXT 上传将在阶段 2 开放
-              </button>
+            <UploadPanel
+              document={uploadedDocument}
+              error={uploadError}
+              isDeleting={deleteMutation.isPending}
+              isUploading={uploadMutation.isPending}
+              maxUploadBytes={maxUploadBytes}
+              progress={uploadProgress}
+              onCancel={() => uploadController.current?.abort()}
+              onDelete={() => {
+                if (uploadedDocument) {
+                  deleteMutation.mutate(uploadedDocument.task_id)
+                }
+              }}
+              onFile={handleFile}
+            />
+
+            <div className="mt-4 flex flex-wrap items-center gap-4">
               <a
                 href="#workflow"
                 className="rounded-xl border border-black/10 bg-white px-5 py-3.5 text-sm font-semibold text-black/65 shadow-sm transition hover:border-black/20 hover:text-black"
@@ -119,7 +209,7 @@ function App() {
           <aside className="flex min-h-[430px] flex-col justify-between bg-[#24382c] p-6 text-[#e9eee7] md:p-10 lg:p-12">
             <div className="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-white/45">
               <span>Analysis workspace</span>
-              <span>00 / 04</span>
+              <span>{uploadedDocument ? '01 / 04' : '00 / 04'}</span>
             </div>
 
             <div className="my-12 space-y-3">

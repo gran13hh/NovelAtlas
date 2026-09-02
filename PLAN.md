@@ -50,6 +50,12 @@
 
 该问题主要在阶段 3 的分块设计、阶段 4 的模型网关和阶段 5 的 LangGraph 工作流中处理。在确认具体模型及上下文窗口前，不锁定最终算法。
 
+### 3. 解析结果的浏览器端临时保存
+
+用户希望小说解析完成后的结构化结果可在浏览器端临时保存。该内容不同于阶段 2 的小说原文临时文件，后续需要根据结果体积、刷新恢复、隐私和清理要求，在内存、`sessionStorage` 与 IndexedDB 之间选择。浏览器端数据不能包含模型密钥，也不能默认成为需要长期可靠保存的唯一副本。
+
+该问题主要在阶段 6 的分析工作台与人工修正中处理，阶段 2 不将小说正文写入浏览器持久缓存。
+
 ## 阶段 0：项目与环境初始化
 
 **状态：已验收**
@@ -97,14 +103,15 @@
 
 手动验收步骤：
 
-1. 在项目根目录启动后端：
+1. 推荐双击项目根目录的 `start.command`，它会同时启动前后端并自动打开浏览器。在 PyCharm 中也可以直接运行 `scripts/dev.py`。
+2. 如果需要分别启动，在项目根目录启动后端：
 
    ```bash
    source .venv/bin/activate
    python -m uvicorn apps.api.novelatlas_api.main:app --reload --port 8000
    ```
 
-2. 打开第二个终端启动前端：
+3. 打开第二个终端启动前端：
 
    ```bash
    cd apps/web
@@ -125,7 +132,7 @@
 
 ## 阶段 2：TXT 上传与临时文件生命周期
 
-**状态：未开始**
+**状态：已验收**
 
 范围：
 
@@ -143,9 +150,46 @@
 - 中文编码样例能够正确读取。
 - 删除任务后临时文件确实消失。
 
+手动验收步骤：
+
+1. 在项目根目录启动后端：
+
+   ```bash
+   source .venv/bin/activate
+   python -m uvicorn apps.api.novelatlas_api.main:app --reload --port 8000
+   ```
+
+2. 打开第二个终端启动前端：
+
+   ```bash
+   cd apps/web
+   npm run dev
+   ```
+
+4. 打开前端地址，将 `tests/fixtures/novels/sample_utf8.txt` 拖入上传区域。
+5. 确认页面显示文件名、大小、字符数、UTF-8 编码、任务 ID 和自动清理时间。
+6. 点击“立即删除”，确认上传卡片恢复为文件选择区域。
+7. 尝试选择非 TXT、空 TXT 和超过 50 MiB 的文件，确认页面给出明确错误。
+8. 可在 `http://127.0.0.1:8000/docs` 中直接测试上传、查询和删除接口。
+9. 可选地用短过期时间启动后端，验证自动清理：
+
+   ```bash
+   NOVELATLAS_UPLOAD_TTL_SECONDS=10 \
+   NOVELATLAS_CLEANUP_INTERVAL_SECONDS=2 \
+   python -m uvicorn apps.api.novelatlas_api.main:app --port 8000
+   ```
+
+10. 可选地再次运行自动检查：
+
+   ```bash
+   python -m pytest apps/api/tests -q
+   python -m ruff check apps/api novelatlas
+   cd apps/web && npm run lint && npm run build
+   ```
+
 ## 阶段 3：章节识别、分块与引用定位
 
-**状态：未开始**
+**状态：开发中**
 
 范围：
 
