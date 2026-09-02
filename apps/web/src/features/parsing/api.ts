@@ -14,6 +14,14 @@ export type TextChunk = {
   token_count: number
   overlap_with_previous_tokens: number
   reference: SourceReference
+  content_override: string | null
+}
+
+export type TextChunkContent = {
+  chunk: TextChunk
+  content: string
+  original_content: string
+  is_edited: boolean
 }
 
 export type ParsedChapter = {
@@ -67,4 +75,50 @@ export async function parseDocument(taskId: string): Promise<ParsedDocument> {
 
   const payload = (await response.json().catch(() => null)) as unknown
   throw new Error(responseDetail(payload, `解析失败（${response.status}）`))
+}
+
+async function parsedResponse(
+  response: Response,
+  fallback: string,
+): Promise<ParsedDocument> {
+  if (response.ok) {
+    return response.json() as Promise<ParsedDocument>
+  }
+  const payload = (await response.json().catch(() => null)) as unknown
+  throw new Error(responseDetail(payload, fallback))
+}
+
+export async function fetchChunkContent(
+  taskId: string,
+  chunkId: string,
+): Promise<TextChunkContent> {
+  const response = await fetch(`/api/documents/${taskId}/chunks/${chunkId}`)
+  if (response.ok) {
+    return response.json() as Promise<TextChunkContent>
+  }
+  const payload = (await response.json().catch(() => null)) as unknown
+  throw new Error(responseDetail(payload, `读取文本块失败（${response.status}）`))
+}
+
+export async function updateTextChunk(
+  taskId: string,
+  chunkId: string,
+  content: string,
+): Promise<ParsedDocument> {
+  const response = await fetch(`/api/documents/${taskId}/chunks/${chunkId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  })
+  return parsedResponse(response, `保存文本块失败（${response.status}）`)
+}
+
+export async function deleteTextChunk(
+  taskId: string,
+  chunkId: string,
+): Promise<ParsedDocument> {
+  const response = await fetch(`/api/documents/${taskId}/chunks/${chunkId}`, {
+    method: 'DELETE',
+  })
+  return parsedResponse(response, `删除文本块失败（${response.status}）`)
 }

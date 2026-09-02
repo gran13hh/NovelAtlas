@@ -1,9 +1,13 @@
+import { useMemo, useState } from 'react'
+
+import { ChunkEditor } from './ChunkEditor'
 import type { ParsedDocument } from './api'
 
 type ParsePreviewProps = {
   error: string | null
   isParsing: boolean
   result: ParsedDocument | null
+  onResultChange: (result: ParsedDocument) => void
   onParse: () => void
 }
 
@@ -13,8 +17,15 @@ export function ParsePreview({
   error,
   isParsing,
   result,
+  onResultChange,
   onParse,
 }: ParsePreviewProps) {
+  const [editingChunkId, setEditingChunkId] = useState<string | null>(null)
+  const chunkById = useMemo(
+    () => new Map(result?.chunks.map((chunk) => [chunk.chunk_id, chunk]) ?? []),
+    [result],
+  )
+
   if (!result) {
     return (
       <section className="mt-4 rounded-2xl border border-black/10 bg-white/55 p-5">
@@ -98,6 +109,9 @@ export function ParsePreview({
             </dd>
           </div>
         </dl>
+        <p className="mt-4 text-xs leading-5 text-white/38">
+          文本块编辑与删除仅影响当前解析清单；重新解析会恢复原始分块。
+        </p>
       </div>
 
       <div className="max-h-[520px] divide-y divide-black/8 overflow-y-auto">
@@ -129,6 +143,72 @@ export function ParsePreview({
                 原文区间 [{chapter.content_start_char},{' '}
                 {chapter.content_end_char}) · {chapter.chapter_id}
               </p>
+            </div>
+
+            <div className="ml-12 mt-4">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-black/35">
+                  文本块
+                </p>
+                <span className="text-xs text-black/30">
+                  {chapter.chunk_ids.length} 个
+                </span>
+              </div>
+              {chapter.chunk_ids.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-black/12 px-4 py-3 text-sm text-black/38">
+                  本章没有文本块；重新解析可以恢复已删除的块。
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {chapter.chunk_ids.map((chunkId) => {
+                    const chunk = chunkById.get(chunkId)
+                    if (!chunk) return null
+                    const isEditing = editingChunkId === chunkId
+                    return (
+                      <div
+                        key={chunkId}
+                        className="rounded-xl border border-black/8 bg-white/75 p-3"
+                      >
+                        <div className="flex flex-wrap items-center gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-mono text-xs font-semibold text-[#31533f]">
+                                文本块 {chunk.ordinal}
+                              </span>
+                              {chunk.content_override !== null && (
+                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                                  已编辑
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-1 text-xs text-black/35">
+                              {number.format(chunk.token_count)} Token · 原文 [{chunk.reference.start_char},{' '}
+                              {chunk.reference.end_char})
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingChunkId(isEditing ? null : chunkId)
+                            }
+                            className="rounded-lg border border-black/10 bg-white px-3 py-2 text-xs font-semibold text-black/58 transition hover:border-[#55705e]/35 hover:text-[#31533f]"
+                          >
+                            {isEditing ? '收起' : '编辑或删除'}
+                          </button>
+                        </div>
+                        {isEditing && (
+                          <ChunkEditor
+                            chunk={chunk}
+                            taskId={result.task_id}
+                            onChanged={onResultChange}
+                            onClose={() => setEditingChunkId(null)}
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </details>
         ))}

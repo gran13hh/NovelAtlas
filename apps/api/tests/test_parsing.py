@@ -138,6 +138,110 @@ def test_parse_api_persists_preview_manifest(client: TestClient, tmp_path) -> No
     assert stored.json() == parsed
 
 
+def test_chunk_content_can_be_loaded_and_edited_without_changing_source(
+    client: TestClient,
+) -> None:
+    text = "第一章 初见\n这是未经修改的小说正文。\n"
+    upload = client.post(
+        "/api/uploads",
+        files={"file": ("novel.txt", text.encode(), "text/plain")},
+    )
+    task_id = upload.json()["task_id"]
+    parsed = client.post(f"/api/documents/{task_id}/parse").json()
+    chunk_id = parsed["chunks"][0]["chunk_id"]
+    source_path = client.app.state.upload_storage.source_path(task_id)
+
+    detail = client.get(f"/api/documents/{task_id}/chunks/{chunk_id}")
+    assert detail.status_code == 200
+    assert detail.json()["content"] == "这是未经修改的小说正文。\n"
+    assert detail.json()["original_content"] == detail.json()["content"]
+    assert detail.json()["is_edited"] is False
+
+    updated = client.patch(
+        f"/api/documents/{task_id}/chunks/{chunk_id}",
+        json={"content": "这是用户修正后的正文。\n"},
+    )
+    assert updated.status_code == 200
+    updated_chunk = updated.json()["chunks"][0]
+    assert updated_chunk["content_override"] == "这是用户修正后的正文。\n"
+    assert updated_chunk["token_count"] > 0
+    assert source_path.read_text(encoding="utf-8") == text
+
+    edited_detail = client.get(f"/api/documents/{task_id}/chunks/{chunk_id}")
+    assert edited_detail.json()["content"] == "这是用户修正后的正文。\n"
+    assert edited_detail.json()["original_content"] == "这是未经修改的小说正文。\n"
+    assert edited_detail.json()["is_edited"] is True
+    assert client.get(f"/api/documents/{task_id}/parse").json() == updated.json()
+
+    restored = client.patch(
+        f"/api/documents/{task_id}/chunks/{chunk_id}",
+        json={"content": "这是未经修改的小说正文。\n"},
+    )
+    assert restored.status_code == 200
+    assert restored.json()["chunks"][0]["content_override"] is None
+
+    client.patch(
+        f"/api/documents/{task_id}/chunks/{chunk_id}",
+        json={"content": "再次修改，随后重新解析。\n"},
+    )
+    reparsed = client.post(f"/api/documents/{task_id}/parse").json()
+    assert reparsed["chunks"][0]["content_override"] is None
+
+
+def test_chunk_edit_rejects_whitespace_and_token_overflow(client: TestClient) -> None:
+    upload = client.post(
+        "/api/uploads",
+        files={"file": ("novel.txt", "正文内容。".encode(), "text/plain")},
+    )
+    task_id = upload.json()["task_id"]
+    parsed = client.post(f"/api/documents/{task_id}/parse").json()
+    chunk_id = parsed["chunks"][0]["chunk_id"]
+    endpoint = f"/api/documents/{task_id}/chunks/{chunk_id}"
+
+    whitespace = client.patch(endpoint, json={"content": " \n\t"})
+    assert whitespace.status_code == 422
+
+    overflow = client.patch(endpoint, json={"content": "天地" * 7000})
+    assert overflow.status_code == 422
+    assert "不能超过 6000 Token" in overflow.json()["detail"]
+
+
+def test_chunks_can_be_deleted_and_reparse_restores_them(client: TestClient) -> None:
+    text = "第一章 初见\n第一段正文。\n第二章 重逢\n第二段正文。\n"
+    upload = client.post(
+        "/api/uploads",
+        files={"file": ("novel.txt", text.encode(), "text/plain")},
+    )
+    task_id = upload.json()["task_id"]
+    parsed = client.post(f"/api/documents/{task_id}/parse").json()
+    chunk_ids = [chunk["chunk_id"] for chunk in parsed["chunks"]]
+
+    first_delete = client.delete(
+        f"/api/documents/{task_id}/chunks/{chunk_ids[0]}"
+    )
+    assert first_delete.status_code == 200
+    assert first_delete.json()["chunk_count"] == 1
+    assert chunk_ids[0] not in first_delete.json()["chapters"][0]["chunk_ids"]
+    assert (
+        client.get(f"/api/documents/{task_id}/chunks/{chunk_ids[0]}").status_code
+        == 404
+    )
+
+    last_delete = client.delete(
+        f"/api/documents/{task_id}/chunks/{chunk_ids[1]}"
+    )
+    assert last_delete.status_code == 200
+    assert last_delete.json()["chunk_count"] == 0
+    assert client.get(f"/api/documents/{task_id}/parse").json()["chunks"] == []
+    assert client.app.state.upload_storage.source_path(task_id).read_text(
+        encoding="utf-8"
+    ) == text
+
+    reparsed = client.post(f"/api/documents/{task_id}/parse").json()
+    assert reparsed["chunk_count"] == 2
+    assert [chunk["chunk_id"] for chunk in reparsed["chunks"]] == chunk_ids
+
+
 def test_parse_api_returns_missing_upload(client: TestClient) -> None:
     response = client.post(f"/api/documents/{'f' * 32}/parse")
 

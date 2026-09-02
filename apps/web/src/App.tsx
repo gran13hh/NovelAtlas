@@ -222,6 +222,7 @@ function App() {
                 error={parseError}
                 isParsing={parseMutation.isPending}
                 result={parseResult}
+                onResultChange={setParseResult}
                 onParse={() => parseMutation.mutate(uploadedDocument.task_id)}
               />
             )}

@@ -31,6 +31,28 @@ class TextChunk(BaseModel):
     token_count: int = Field(ge=1)
     overlap_with_previous_tokens: int = Field(ge=0)
     reference: SourceReference
+    content_override: str | None = Field(default=None, min_length=1)
+
+
+class UpdateTextChunkRequest(BaseModel):
+    """User-authored replacement content for one parsed text chunk."""
+
+    content: str = Field(min_length=1, max_length=1_000_000)
+
+    @model_validator(mode="after")
+    def reject_whitespace_only_content(self) -> "UpdateTextChunkRequest":
+        if not self.content.strip():
+            raise ValueError("chunk content cannot contain only whitespace")
+        return self
+
+
+class TextChunkContent(BaseModel):
+    """On-demand text for editing without returning the whole novel at once."""
+
+    chunk: TextChunk
+    content: str
+    original_content: str
+    is_edited: bool
 
 
 class ParsedChapter(BaseModel):
@@ -68,7 +90,7 @@ class ParsedDocument(BaseModel):
     character_count: int = Field(ge=1)
     token_count: int = Field(ge=1)
     chapter_count: int = Field(ge=1)
-    chunk_count: int = Field(ge=1)
+    chunk_count: int = Field(ge=0)
     used_fallback_chapter: bool
     chapters: list[ParsedChapter]
     chunks: list[TextChunk]

@@ -2,7 +2,14 @@
 """Validated data exchanged between NovelAtlas layers."""
 
 from .document import DeleteUploadResponse, UploadConstraints, UploadedDocument
-from .parsing import ParsedChapter, ParsedDocument, SourceReference, TextChunk
+from .parsing import (
+    ParsedChapter,
+    ParsedDocument,
+    SourceReference,
+    TextChunk,
+    TextChunkContent,
+    UpdateTextChunkRequest,
+)
 
 __all__ = [
     "DeleteUploadResponse",
@@ -10,6 +17,8 @@ __all__ = [
     "ParsedDocument",
     "SourceReference",
     "TextChunk",
+    "TextChunkContent",
+    "UpdateTextChunkRequest",
     "UploadConstraints",
     "UploadedDocument",
 ]
