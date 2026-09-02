@@ -1,0 +1,16 @@
+# Core web API. The standard-no-fastapi-cloud-cli extra includes Uvicorn,
+# python-multipart, HTTPX, Jinja2, and the local FastAPI CLI without cloud tools.
+fastapi[standard-no-fastapi-cloud-cli]==0.141.1
+pydantic-settings==2.15.0
+
+# Agent orchestration and streaming progress.
+langgraph==1.2.11
+sse-starlette==3.4.8
+
+# TXT encoding detection and Word export.
+charset-normalizer==3.5.1
+python-docx==1.2.0
+
+# Development and testing.
+pytest==9.1.1
+ruff==0.16.5
