@@ -13,7 +13,9 @@ from novelatlas.services.temporary_storage import TemporaryUploadStorage
 
 from . import __version__
 from .config import Settings
+from .dependencies import create_model_gateway
 from .routes.documents import router as documents_router
+from .routes.models import router as models_router
 from .routes.uploads import router as uploads_router
 
 
@@ -51,6 +53,7 @@ def create_app(
         )
         application.state.settings = resolved_settings
         application.state.upload_storage = storage
+        application.state.model_gateway = create_model_gateway(resolved_settings)
         cleaner = asyncio.create_task(
             _cleanup_expired_uploads(
                 storage,
@@ -73,6 +76,7 @@ def create_app(
     )
     application.include_router(uploads_router)
     application.include_router(documents_router)
+    application.include_router(models_router)
 
     @application.get(
         "/api/health",

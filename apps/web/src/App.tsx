@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 
+import { ModelGatewayPanel } from './features/models/ModelGatewayPanel'
 import { parseDocument, type ParsedDocument } from './features/parsing/api'
 import { ParsePreview } from './features/parsing/ParsePreview'
 import {
@@ -187,9 +188,9 @@ function App() {
         <section className="grid border-b border-black/10 lg:grid-cols-[1.25fr_0.75fr]">
           <div className="px-5 py-14 md:px-10 md:py-20 lg:border-r lg:border-black/10 lg:px-16 lg:py-24">
             <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-[#31533f]/20 bg-[#dfe8dc] px-3 py-1.5 text-xs font-semibold text-[#31533f]">
-              <span>阶段 3</span>
+              <span>阶段 4</span>
               <span className="h-3 w-px bg-[#31533f]/25" />
-              <span>章节与引用定位</span>
+              <span>模型网关与 Mock</span>
             </div>
 
             <h1 className="max-w-3xl font-serif text-5xl font-semibold leading-[1.04] tracking-[-0.045em] text-[#17221b] md:text-7xl">
@@ -269,6 +270,8 @@ function App() {
             </p>
           </aside>
         </section>
+
+        <ModelGatewayPanel />
 
         <section
           id="workflow"

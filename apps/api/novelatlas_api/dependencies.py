@@ -2,6 +2,7 @@
 
 from fastapi import Request
 
+from novelatlas.models import ModelGateway, ProviderConfig
 from novelatlas.services.temporary_storage import TemporaryUploadStorage
 
 from .config import Settings
@@ -23,3 +24,41 @@ def get_settings(request: Request) -> Settings:
     """Return validated runtime settings."""
 
     return request.app.state.settings
+
+
+def create_model_gateway(settings: Settings) -> ModelGateway:
+    """Build the process-scoped gateway from private server-side settings."""
+
+    text_api_key = (
+        settings.text_model_api_key.get_secret_value()
+        if settings.text_model_api_key is not None
+        else None
+    )
+    image_api_key = (
+        settings.image_model_api_key.get_secret_value()
+        if settings.image_model_api_key is not None
+        else None
+    )
+    return ModelGateway(
+        text=ProviderConfig(
+            provider=settings.text_model_provider,
+            model=settings.text_model_name,
+            base_url=settings.text_model_base_url,
+            api_key=text_api_key,
+        ),
+        image=ProviderConfig(
+            provider=settings.image_model_provider,
+            model=settings.image_model_name,
+            base_url=settings.image_model_base_url,
+            api_key=image_api_key,
+        ),
+        timeout_seconds=settings.model_timeout_seconds,
+        max_retries=settings.model_max_retries,
+        retry_base_delay_seconds=settings.model_retry_base_delay_seconds,
+    )
+
+
+def get_model_gateway(request: Request) -> ModelGateway:
+    """Return the process-scoped text/image model gateway."""
+
+    return request.app.state.model_gateway

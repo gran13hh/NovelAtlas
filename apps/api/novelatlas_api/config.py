@@ -1,6 +1,8 @@
 """Environment-backed API settings."""
 
-from pydantic import Field, model_validator
+from typing import Literal
+
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,6 +21,26 @@ class Settings(BaseSettings):
     tokenizer_name: str = Field(default="o200k_base", min_length=1)
     chunk_max_tokens: int = Field(default=6000, ge=32)
     chunk_overlap_tokens: int = Field(default=300, ge=0)
+
+    text_model_provider: Literal["mock", "openai"] = "mock"
+    text_model_name: str = Field(default="novelatlas-mock-text", min_length=1)
+    text_model_base_url: str = Field(
+        default="https://api.openai.com/v1",
+        min_length=1,
+    )
+    text_model_api_key: SecretStr | None = None
+
+    image_model_provider: Literal["mock", "openai"] = "mock"
+    image_model_name: str = Field(default="novelatlas-mock-image", min_length=1)
+    image_model_base_url: str = Field(
+        default="https://api.openai.com/v1",
+        min_length=1,
+    )
+    image_model_api_key: SecretStr | None = None
+
+    model_timeout_seconds: float = Field(default=60, gt=0, le=600)
+    model_max_retries: int = Field(default=2, ge=0, le=5)
+    model_retry_base_delay_seconds: float = Field(default=0.25, ge=0, le=10)
 
     @model_validator(mode="after")
     def validate_chunk_overlap(self) -> "Settings":
