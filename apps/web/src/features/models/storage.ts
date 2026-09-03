@@ -1,20 +1,24 @@
-import type { BrowserModelGatewayConfig, BrowserProviderConfig } from './api'
+import type {
+  AnalysisBudgetConfig,
+  BrowserModelGatewayConfig,
+  BrowserProviderConfig,
+} from './api'
 
 const STORAGE_KEY = 'novelatlas.model-gateway.v1'
 
 export const DEFAULT_BROWSER_MODEL_CONFIG: BrowserModelGatewayConfig = {
-  version: 1,
+  version: 2,
   text: {
     provider: 'mock',
     model: 'novelatlas-mock-text',
     base_url: 'https://api.openai.com/v1',
     api_key: '',
   },
-  image: {
-    provider: 'mock',
-    model: 'novelatlas-mock-image',
-    base_url: 'https://api.openai.com/v1',
-    api_key: '',
+  analysis_budget: {
+    context_window_tokens: 128_000,
+    max_input_tokens: 24_000,
+    output_reserve_tokens: 4_000,
+    safety_margin_tokens: 2_000,
   },
 }
 
@@ -32,11 +36,25 @@ function isProviderConfig(value: unknown): value is BrowserProviderConfig {
   )
 }
 
+function isAnalysisBudget(value: unknown): value is AnalysisBudgetConfig {
+  if (typeof value !== 'object' || value === null) return false
+  return (
+    'context_window_tokens' in value &&
+    typeof value.context_window_tokens === 'number' &&
+    'max_input_tokens' in value &&
+    typeof value.max_input_tokens === 'number' &&
+    'output_reserve_tokens' in value &&
+    typeof value.output_reserve_tokens === 'number' &&
+    'safety_margin_tokens' in value &&
+    typeof value.safety_margin_tokens === 'number'
+  )
+}
+
 function cloneDefaults(): BrowserModelGatewayConfig {
   return {
-    version: 1,
+    version: 2,
     text: { ...DEFAULT_BROWSER_MODEL_CONFIG.text },
-    image: { ...DEFAULT_BROWSER_MODEL_CONFIG.image },
+    analysis_budget: { ...DEFAULT_BROWSER_MODEL_CONFIG.analysis_budget },
   }
 }
 
@@ -49,16 +67,30 @@ export function loadBrowserModelConfig(): BrowserModelGatewayConfig {
       typeof value === 'object' &&
       value !== null &&
       'version' in value &&
-      value.version === 1 &&
+      value.version === 2 &&
       'text' in value &&
       isProviderConfig(value.text) &&
-      'image' in value &&
-      isProviderConfig(value.image)
+      'analysis_budget' in value &&
+      isAnalysisBudget(value.analysis_budget)
     ) {
       return {
-        version: 1,
+        version: 2,
         text: { ...value.text },
-        image: { ...value.image },
+        analysis_budget: { ...value.analysis_budget },
+      }
+    }
+    if (
+      typeof value === 'object' &&
+      value !== null &&
+      'version' in value &&
+      value.version === 1 &&
+      'text' in value &&
+      isProviderConfig(value.text)
+    ) {
+      return {
+        version: 2,
+        text: { ...value.text },
+        analysis_budget: { ...DEFAULT_BROWSER_MODEL_CONFIG.analysis_budget },
       }
     }
   } catch {

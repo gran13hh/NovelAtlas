@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi import Path as ApiPath
 from starlette.concurrency import run_in_threadpool
 
+from novelatlas.analysis import AnalysisTaskManager
 from novelatlas.schemas.document import (
     DeleteUploadResponse,
     UploadConstraints,
@@ -20,13 +21,19 @@ from novelatlas.services.temporary_storage import (
 from novelatlas.services.text_decoder import TextDecodeError, decode_txt
 
 from ..config import Settings
-from ..dependencies import get_max_upload_bytes, get_settings, get_upload_storage
+from ..dependencies import (
+    get_analysis_task_manager,
+    get_max_upload_bytes,
+    get_settings,
+    get_upload_storage,
+)
 
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
 TaskId = Annotated[str, ApiPath(pattern=r"^[0-9a-f]{32}$")]
 Storage = Annotated[TemporaryUploadStorage, Depends(get_upload_storage)]
 MaxUploadBytes = Annotated[int, Depends(get_max_upload_bytes)]
 UploadSettings = Annotated[Settings, Depends(get_settings)]
+AnalysisTasks = Annotated[AnalysisTaskManager, Depends(get_analysis_task_manager)]
 
 
 def _safe_filename(filename: str | None) -> str:
@@ -115,9 +122,14 @@ async def get_upload(task_id: TaskId, storage: Storage) -> UploadedDocument:
 
 
 @router.delete("/{task_id}", response_model=DeleteUploadResponse)
-async def delete_upload(task_id: TaskId, storage: Storage) -> DeleteUploadResponse:
+async def delete_upload(
+    task_id: TaskId,
+    storage: Storage,
+    analysis_tasks: AnalysisTasks,
+) -> DeleteUploadResponse:
     """Delete an uploaded novel and all task-scoped temporary files."""
 
+    await analysis_tasks.discard(task_id, include_plan=True)
     deleted = await run_in_threadpool(storage.delete, task_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="上传任务不存在或已过期")

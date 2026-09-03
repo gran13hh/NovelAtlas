@@ -1,7 +1,6 @@
-"""Provider-neutral text and image model gateway."""
+"""Provider-neutral text model gateway."""
 
 from .base import (
-    ImageModelProvider,
     ModelConfigurationError,
     ModelGatewayError,
     ProviderConfig,
@@ -10,7 +9,6 @@ from .base import (
 from .gateway import ModelGateway
 
 __all__ = [
-    "ImageModelProvider",
     "ModelConfigurationError",
     "ModelGateway",
     "ModelGatewayError",

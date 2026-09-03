@@ -4,8 +4,6 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from novelatlas.schemas.models import (
-    ImageGenerationRequest,
-    ImageGenerationResult,
     ModelProviderName,
     TextGenerationRequest,
     TextGenerationResult,
@@ -52,18 +50,9 @@ class ModelConfigurationError(ModelGatewayError):
 
 
 class TextModelProvider(Protocol):
-    """Capability required by analysis and writing agents."""
+    """Capability required by novel outline agents."""
 
     async def generate_text(
         self,
         request: TextGenerationRequest,
     ) -> TextGenerationResult: ...
-
-
-class ImageModelProvider(Protocol):
-    """Capability required by character and map generation tools."""
-
-    async def generate_image(
-        self,
-        request: ImageGenerationRequest,
-    ) -> ImageGenerationResult: ...

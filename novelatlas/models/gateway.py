@@ -1,4 +1,4 @@
-"""Capability-based provider selection with bounded retry behavior."""
+"""Text-model provider selection with bounded retry behavior."""
 
 import asyncio
 from collections.abc import Awaitable, Callable
@@ -8,8 +8,6 @@ from urllib.parse import urlsplit
 import httpx
 
 from novelatlas.schemas.models import (
-    ImageGenerationRequest,
-    ImageGenerationResult,
     ModelGatewayStatus,
     ModelProviderStatus,
     TextGenerationRequest,
@@ -17,37 +15,30 @@ from novelatlas.schemas.models import (
 )
 
 from .base import (
-    ImageModelProvider,
     ModelConfigurationError,
     ModelGatewayError,
     ProviderConfig,
     TextModelProvider,
 )
-from .mock import MockImageModelProvider, MockTextModelProvider
-from .openai import (
-    OpenAIImageModelProvider,
-    OpenAIModelCatalog,
-    OpenAITextModelProvider,
-)
+from .mock import MockTextModelProvider
+from .openai import OpenAIModelCatalog, OpenAITextModelProvider
 
 ResultT = TypeVar("ResultT")
 
 
 class ModelGateway:
-    """Expose text and image capabilities without leaking provider details."""
+    """Expose text generation without leaking provider details."""
 
     def __init__(
         self,
         *,
         text: ProviderConfig,
-        image: ProviderConfig,
         timeout_seconds: float,
         max_retries: int,
         retry_base_delay_seconds: float,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.text_config = text
-        self.image_config = image
         self.timeout_seconds = timeout_seconds
         self.max_retries = max_retries
         self.retry_base_delay_seconds = retry_base_delay_seconds
@@ -56,8 +47,7 @@ class ModelGateway:
     @property
     def status(self) -> ModelGatewayStatus:
         return ModelGatewayStatus(
-            text=self._provider_status(self.text_config, "TEXT_MODEL_API_KEY"),
-            image=self._provider_status(self.image_config, "IMAGE_MODEL_API_KEY"),
+            text=self._provider_status(self.text_config),
             timeout_seconds=self.timeout_seconds,
             max_retries=self.max_retries,
         )
@@ -69,17 +59,10 @@ class ModelGateway:
         provider = self._text_provider()
         return await self._with_retries(lambda: provider.generate_text(request))
 
-    async def generate_image(
-        self,
-        request: ImageGenerationRequest,
-    ) -> ImageGenerationResult:
-        provider = self._image_provider()
-        return await self._with_retries(lambda: provider.generate_image(request))
+    async def list_models(self) -> list[str]:
+        """List model IDs visible to the configured text provider."""
 
-    async def list_models(self, capability: str) -> list[str]:
-        """List provider-visible model IDs for a text or image configuration."""
-
-        config = self.text_config if capability == "text" else self.image_config
+        config = self.text_config
         if config.provider == "mock":
             return [config.model]
         if config.provider == "openai":
@@ -102,17 +85,6 @@ class ModelGateway:
             )
         raise ModelConfigurationError("不支持的文本模型供应商")
 
-    def _image_provider(self) -> ImageModelProvider:
-        if self.image_config.provider == "mock":
-            return MockImageModelProvider(self.image_config)
-        if self.image_config.provider == "openai":
-            return OpenAIImageModelProvider(
-                self.image_config,
-                timeout_seconds=self.timeout_seconds,
-                transport=self.transport,
-            )
-        raise ModelConfigurationError("不支持的图片模型供应商")
-
     async def _with_retries(
         self,
         operation: Callable[[], Awaitable[ResultT]],
@@ -131,7 +103,6 @@ class ModelGateway:
     @staticmethod
     def _provider_status(
         config: ProviderConfig,
-        api_key_setting: str,
     ) -> ModelProviderStatus:
         if config.provider == "mock":
             return ModelProviderStatus(
@@ -145,7 +116,7 @@ class ModelGateway:
 
         missing: list[str] = []
         if not config.api_key:
-            missing.append(f"NOVELATLAS_{api_key_setting}")
+            missing.append("NOVELATLAS_TEXT_MODEL_API_KEY")
         if not config.model:
             missing.append("model name")
         parsed_base_url = urlsplit(config.base_url)

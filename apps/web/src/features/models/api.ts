@@ -9,7 +9,6 @@ export type ModelProviderStatus = {
 
 export type ModelGatewayStatus = {
   text: ModelProviderStatus
-  image: ModelProviderStatus
   timeout_seconds: number
   max_retries: number
 }
@@ -21,10 +20,17 @@ export type BrowserProviderConfig = {
   api_key: string
 }
 
+export type AnalysisBudgetConfig = {
+  context_window_tokens: number
+  max_input_tokens: number
+  output_reserve_tokens: number
+  safety_margin_tokens: number
+}
+
 export type BrowserModelGatewayConfig = {
-  version: 1
+  version: 2
   text: BrowserProviderConfig
-  image: BrowserProviderConfig
+  analysis_budget: AnalysisBudgetConfig
 }
 
 export type ModelCatalogResult = {
@@ -42,16 +48,6 @@ export type TextGenerationResult = {
     output_tokens: number | null
     total_tokens: number | null
   } | null
-  is_mock: boolean
-}
-
-export type ImageGenerationResult = {
-  provider: 'mock' | 'openai'
-  model: string
-  request_id: string | null
-  image_base64: string | null
-  image_url: string | null
-  revised_prompt: string | null
   is_mock: boolean
 }
 
@@ -110,20 +106,7 @@ export async function testTextModel(): Promise<TextGenerationResult> {
   return jsonResponse(response, `文本模型测试失败（${response.status}）`)
 }
 
-export async function testImageModel(): Promise<ImageGenerationResult> {
-  const response = await fetch('/api/models/test/image', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      prompt: 'NovelAtlas 模型网关连接测试：虚构山河地图',
-      size: '1024x1024',
-    }),
-  })
-  return jsonResponse(response, `图片模型测试失败（${response.status}）`)
-}
-
 export async function discoverModels(
-  capability: 'text' | 'image',
   config: BrowserProviderConfig,
 ): Promise<ModelCatalogResult> {
   const connection = {
@@ -131,7 +114,7 @@ export async function discoverModels(
     base_url: config.base_url,
     api_key: config.api_key,
   }
-  const response = await fetch(`/api/models/browser/catalog/${capability}`, {
+  const response = await fetch('/api/models/browser/catalog/text', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ config: connection }),
@@ -155,21 +138,4 @@ export async function testBrowserTextModel(
     }),
   })
   return jsonResponse(response, `文本模型测试失败（${response.status}）`)
-}
-
-export async function testBrowserImageModel(
-  config: BrowserProviderConfig,
-): Promise<ImageGenerationResult> {
-  const response = await fetch('/api/models/browser/test/image', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      config,
-      request: {
-        prompt: 'NovelAtlas 浏览器模型配置连接测试：虚构山河地图',
-        size: '1024x1024',
-      },
-    }),
-  })
-  return jsonResponse(response, `图片模型测试失败（${response.status}）`)
 }

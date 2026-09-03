@@ -127,6 +127,32 @@ class TemporaryUploadStorage:
         except FileNotFoundError as error:
             raise ArtifactNotFoundError(name) from error
 
+    def delete_json_artifact(self, task_id: str, name: str) -> bool:
+        """Delete one derived artifact without affecting the live upload."""
+
+        artifact_path = self._artifact_path(task_id, name)
+        if not artifact_path.is_file():
+            return False
+        artifact_path.unlink()
+        return True
+
+    def delete_json_artifacts(self, task_id: str, prefix: str) -> int:
+        """Delete task artifacts with one validated filename prefix."""
+
+        task_directory = self._task_directory(task_id)
+        self.get(task_id)
+        if not prefix or any(
+            character not in "abcdefghijklmnopqrstuvwxyz0123456789-_"
+            for character in prefix
+        ):
+            raise ValueError("invalid artifact prefix")
+        deleted = 0
+        for artifact_path in task_directory.glob(f"{prefix}*.json"):
+            if artifact_path.is_file():
+                artifact_path.unlink()
+                deleted += 1
+        return deleted
+
     def delete(self, task_id: str) -> bool:
         """Delete a task directory and all temporary contents."""
 
@@ -185,7 +211,8 @@ class TemporaryUploadStorage:
     def _artifact_path(self, task_id: str, name: str) -> Path:
         self.get(task_id)
         if not name or any(
-            character not in "abcdefghijklmnopqrstuvwxyz-_" for character in name
+            character not in "abcdefghijklmnopqrstuvwxyz0123456789-_"
+            for character in name
         ):
             raise ValueError("invalid artifact name")
         return self._task_directory(task_id) / f"{name}.json"

@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     chunk_max_tokens: int = Field(default=6000, ge=32)
     chunk_overlap_tokens: int = Field(default=300, ge=0)
 
+    analysis_context_window_tokens: int = Field(default=128_000, ge=512)
+    analysis_max_input_tokens: int = Field(default=24_000, ge=128)
+    analysis_output_reserve_tokens: int = Field(default=4_000, ge=32, le=32_000)
+    analysis_safety_margin_tokens: int = Field(default=2_000, ge=512)
+
     text_model_provider: Literal["mock", "openai"] = "mock"
     text_model_name: str = Field(default="novelatlas-mock-text", min_length=1)
     text_model_base_url: str = Field(
@@ -29,14 +34,6 @@ class Settings(BaseSettings):
         min_length=1,
     )
     text_model_api_key: SecretStr | None = None
-
-    image_model_provider: Literal["mock", "openai"] = "mock"
-    image_model_name: str = Field(default="novelatlas-mock-image", min_length=1)
-    image_model_base_url: str = Field(
-        default="https://api.openai.com/v1",
-        min_length=1,
-    )
-    image_model_api_key: SecretStr | None = None
 
     model_timeout_seconds: float = Field(default=60, gt=0, le=600)
     model_max_retries: int = Field(default=2, ge=0, le=5)
@@ -48,4 +45,19 @@ class Settings(BaseSettings):
 
         if self.chunk_overlap_tokens >= self.chunk_max_tokens:
             raise ValueError("chunk_overlap_tokens must be smaller than chunk_max_tokens")
+        if (
+            self.analysis_output_reserve_tokens
+            + self.analysis_safety_margin_tokens
+            >= self.analysis_context_window_tokens
+        ):
+            raise ValueError(
+                "analysis output reserve and safety margin must fit the context window"
+            )
+        available_content_tokens = min(
+            self.analysis_max_input_tokens,
+            self.analysis_context_window_tokens
+            - self.analysis_output_reserve_tokens,
+        ) - self.analysis_safety_margin_tokens
+        if available_content_tokens < 64:
+            raise ValueError("analysis settings leave fewer than 64 content tokens")
         return self

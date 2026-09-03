@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi import Path as ApiPath
 from starlette.concurrency import run_in_threadpool
 
+from novelatlas.analysis import AnalysisTaskManager
 from novelatlas.schemas.parsing import (
     ParsedDocument,
     TextChunk,
@@ -21,14 +22,16 @@ from novelatlas.services.temporary_storage import (
 from novelatlas.services.token_chunker import ChunkingConfig, TokenChunker
 
 from ..config import Settings
-from ..dependencies import get_settings, get_upload_storage
+from ..dependencies import get_analysis_task_manager, get_settings, get_upload_storage
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 TaskId = Annotated[str, ApiPath(pattern=r"^[0-9a-f]{32}$")]
 ChunkId = Annotated[str, ApiPath(pattern=r"^chunk_[0-9a-f]{16}$")]
 Storage = Annotated[TemporaryUploadStorage, Depends(get_upload_storage)]
 ParseSettings = Annotated[Settings, Depends(get_settings)]
+AnalysisTasks = Annotated[AnalysisTaskManager, Depends(get_analysis_task_manager)]
 PARSE_ARTIFACT = "parse-result"
+ANALYSIS_PLAN_ARTIFACT = "analysis-plan"
 
 
 class ChunkNotFoundError(LookupError):
@@ -64,6 +67,7 @@ def _parse_document(
         PARSE_ARTIFACT,
         parsed.model_dump_json(indent=2),
     )
+    storage.delete_json_artifact(task_id, ANALYSIS_PLAN_ARTIFACT)
     return parsed
 
 
@@ -84,6 +88,7 @@ def _save_parsed_document(
         PARSE_ARTIFACT,
         parsed.model_dump_json(indent=2),
     )
+    storage.delete_json_artifact(parsed.task_id, ANALYSIS_PLAN_ARTIFACT)
     return parsed
 
 
@@ -170,10 +175,12 @@ async def parse_document(
     task_id: TaskId,
     storage: Storage,
     settings: ParseSettings,
+    analysis_tasks: AnalysisTasks,
 ) -> ParsedDocument:
     """Parse or reparse one temporary source and persist its manifest."""
 
     try:
+        await analysis_tasks.discard(task_id, include_plan=True)
         return await run_in_threadpool(_parse_document, task_id, storage, settings)
     except UploadNotFoundError as error:
         raise HTTPException(status_code=404, detail="上传任务不存在或已过期") from error
@@ -238,10 +245,12 @@ async def update_chunk_content(
     request: UpdateTextChunkRequest,
     storage: Storage,
     settings: ParseSettings,
+    analysis_tasks: AnalysisTasks,
 ) -> ParsedDocument:
     """Persist a task-scoped content override while preserving source coordinates."""
 
     try:
+        await analysis_tasks.discard(task_id, include_plan=True)
         return await run_in_threadpool(
             _update_chunk_content,
             task_id,
@@ -276,10 +285,12 @@ async def delete_chunk(
     task_id: TaskId,
     chunk_id: ChunkId,
     storage: Storage,
+    analysis_tasks: AnalysisTasks,
 ) -> ParsedDocument:
     """Remove one chunk from the current manifest without rewriting source text."""
 
     try:
+        await analysis_tasks.discard(task_id, include_plan=True)
         return await run_in_threadpool(_delete_chunk, task_id, chunk_id, storage)
     except UploadNotFoundError as error:
         raise HTTPException(status_code=404, detail="上传任务不存在或已过期") from error

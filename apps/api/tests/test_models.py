@@ -9,10 +9,7 @@ from fastapi.testclient import TestClient
 from apps.api.novelatlas_api.config import Settings
 from apps.api.novelatlas_api.main import create_app
 from novelatlas.models import ModelGateway, ModelGatewayError, ProviderConfig
-from novelatlas.schemas.models import (
-    ImageGenerationRequest,
-    TextGenerationRequest,
-)
+from novelatlas.schemas.models import TextGenerationRequest
 
 
 def test_public_model_config_contains_no_api_keys(client: TestClient) -> None:
@@ -24,14 +21,6 @@ def test_public_model_config_contains_no_api_keys(client: TestClient) -> None:
         "text": {
             "provider": "mock",
             "model": "novelatlas-mock-text",
-            "base_url": None,
-            "configured": True,
-            "is_mock": True,
-            "missing_settings": [],
-        },
-        "image": {
-            "provider": "mock",
-            "model": "novelatlas-mock-image",
             "base_url": None,
             "configured": True,
             "is_mock": True,
@@ -62,7 +51,6 @@ def test_unsafe_base_url_is_not_returned_by_public_status() -> None:
             "https://user:password@example.test/v1?token=secret",
             "private-key",
         ),
-        image=ProviderConfig("mock", "mock-image", "", None),
         timeout_seconds=5,
         max_retries=0,
         retry_base_delay_seconds=0,
@@ -73,7 +61,7 @@ def test_unsafe_base_url_is_not_returned_by_public_status() -> None:
     assert "secret" not in gateway.status.model_dump_json()
 
 
-def test_mock_text_and_image_models_are_available_without_keys(
+def test_mock_text_model_is_available_without_keys(
     client: TestClient,
 ) -> None:
     secret_prompt = "不要在 Mock 输出中回显这段测试原文"
@@ -88,15 +76,6 @@ def test_mock_text_and_image_models_are_available_without_keys(
     assert text_payload["is_mock"] is True
     assert secret_prompt not in text_payload["content"]
     assert text_payload["usage"]["total_tokens"] > 0
-
-    image_response = client.post(
-        "/api/models/test/image",
-        json={"prompt": "一张虚构山河地图", "size": "1024x1024"},
-    )
-    assert image_response.status_code == 200
-    assert image_response.json()["image_url"].startswith("mock://image/")
-    assert image_response.json()["is_mock"] is True
-
 
 def test_browser_local_mock_configuration_is_transient(client: TestClient) -> None:
     browser_config = {
@@ -238,12 +217,6 @@ def test_openai_responses_adapter_retries_rate_limit_and_normalizes_output() -> 
             base_url="https://example.test/v1",
             api_key="private-test-key",
         ),
-        image=ProviderConfig(
-            provider="mock",
-            model="mock-image",
-            base_url="",
-            api_key=None,
-        ),
         timeout_seconds=5,
         max_retries=1,
         retry_base_delay_seconds=0,
@@ -292,61 +265,15 @@ def test_openai_model_catalog_returns_sorted_unique_ids() -> None:
             "https://example.test/v1",
             "catalog-key",
         ),
-        image=ProviderConfig("mock", "mock-image", "", None),
         timeout_seconds=5,
         max_retries=0,
         retry_base_delay_seconds=0,
         transport=httpx.MockTransport(handler),
     )
 
-    models = asyncio.run(gateway.list_models("text"))
+    models = asyncio.run(gateway.list_models())
 
     assert models == ["model-a", "model-z"]
-
-
-def test_openai_image_adapter_accepts_base64_payload() -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url == "https://example.test/v1/images/generations"
-        payload = json.loads(request.content)
-        assert payload["model"] == "test-image-model"
-        assert payload["n"] == 1
-        return httpx.Response(
-            200,
-            headers={"x-request-id": "image-request-id"},
-            json={
-                "data": [
-                    {
-                        "b64_json": "aW1hZ2UtYnl0ZXM=",
-                        "revised_prompt": "revised map prompt",
-                    }
-                ]
-            },
-        )
-
-    gateway = ModelGateway(
-        text=ProviderConfig("mock", "mock-text", "", None),
-        image=ProviderConfig(
-            "openai",
-            "test-image-model",
-            "https://example.test/v1",
-            "private-image-key",
-        ),
-        timeout_seconds=5,
-        max_retries=0,
-        retry_base_delay_seconds=0,
-        transport=httpx.MockTransport(handler),
-    )
-
-    result = asyncio.run(
-        gateway.generate_image(
-            ImageGenerationRequest(prompt="生成地图", size="1536x1024")
-        )
-    )
-
-    assert result.image_base64 == "aW1hZ2UtYnl0ZXM="
-    assert result.image_url is None
-    assert result.request_id == "image-request-id"
-    assert result.is_mock is False
 
 
 def test_non_retryable_provider_error_is_not_retried() -> None:
@@ -364,7 +291,6 @@ def test_non_retryable_provider_error_is_not_retried() -> None:
             "https://example.test/v1",
             "private-key",
         ),
-        image=ProviderConfig("mock", "mock-image", "", None),
         timeout_seconds=5,
         max_retries=3,
         retry_base_delay_seconds=0,

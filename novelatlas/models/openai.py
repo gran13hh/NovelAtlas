@@ -1,4 +1,4 @@
-"""OpenAI Responses and Image API provider adapters."""
+"""OpenAI-compatible Responses API provider adapter."""
 
 from collections.abc import Mapping
 from typing import Any
@@ -7,8 +7,6 @@ from urllib.parse import urlsplit
 import httpx
 
 from novelatlas.schemas.models import (
-    ImageGenerationRequest,
-    ImageGenerationResult,
     ModelUsage,
     TextGenerationRequest,
     TextGenerationResult,
@@ -193,47 +191,6 @@ class OpenAITextModelProvider(_OpenAIProvider):
             code="empty_provider_response",
             message="文本模型没有返回可用内容",
             retryable=False,
-        )
-
-
-class OpenAIImageModelProvider(_OpenAIProvider):
-    """Generate one image through the OpenAI Image API."""
-
-    async def generate_image(
-        self,
-        request: ImageGenerationRequest,
-    ) -> ImageGenerationResult:
-        body, header_request_id = await self._post(
-            "images/generations",
-            {
-                "model": self.config.model,
-                "prompt": request.prompt,
-                "size": request.size,
-                "n": 1,
-            },
-        )
-        data = body.get("data")
-        first = data[0] if isinstance(data, list) and data else None
-        if not isinstance(first, dict):
-            raise ModelGatewayError(
-                code="empty_provider_response",
-                message="图片模型没有返回可用内容",
-                retryable=False,
-            )
-        image_base64 = first.get("b64_json")
-        image_url = first.get("url")
-        return ImageGenerationResult(
-            provider="openai",
-            model=self.config.model,
-            request_id=header_request_id,
-            image_base64=image_base64 if isinstance(image_base64, str) else None,
-            image_url=image_url if isinstance(image_url, str) else None,
-            revised_prompt=(
-                first.get("revised_prompt")
-                if isinstance(first.get("revised_prompt"), str)
-                else None
-            ),
-            is_mock=False,
         )
 
 

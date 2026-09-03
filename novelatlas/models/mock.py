@@ -3,8 +3,6 @@
 from hashlib import sha256
 
 from novelatlas.schemas.models import (
-    ImageGenerationRequest,
-    ImageGenerationResult,
     ModelUsage,
     TextGenerationRequest,
     TextGenerationResult,
@@ -40,28 +38,5 @@ class MockTextModelProvider:
                 output_tokens=output_tokens,
                 total_tokens=input_tokens + output_tokens,
             ),
-            is_mock=True,
-        )
-
-
-class MockImageModelProvider:
-    """Return a stable mock reference without creating or storing an image."""
-
-    def __init__(self, config: ProviderConfig) -> None:
-        self.config = config
-
-    async def generate_image(
-        self,
-        request: ImageGenerationRequest,
-    ) -> ImageGenerationResult:
-        fingerprint = sha256(
-            f"{request.size}\x1f{request.prompt}".encode()
-        ).hexdigest()[:12]
-        return ImageGenerationResult(
-            provider="mock",
-            model=self.config.model,
-            request_id=f"mock_image_{fingerprint}",
-            image_url=f"mock://image/{fingerprint}",
-            revised_prompt=None,
             is_mock=True,
         )

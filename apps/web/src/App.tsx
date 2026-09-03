@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 
+import { AnalysisPlanPanel } from './features/analysis/AnalysisPlanPanel'
 import { ModelGatewayPanel } from './features/models/ModelGatewayPanel'
 import { parseDocument, type ParsedDocument } from './features/parsing/api'
 import { ParsePreview } from './features/parsing/ParsePreview'
@@ -19,26 +20,26 @@ type HealthResponse = {
   version: string
 }
 
-const analysisModules = [
+const outlineStages = [
   {
     marker: '01',
-    title: '剧情脉络',
-    description: '从章节事件中整理主线、支线、伏笔与时间轴。',
+    title: '批次规划',
+    description: '根据模型输入预算组合相邻章节，预估调用次数。',
   },
   {
     marker: '02',
-    title: '人物图谱',
-    description: '归纳人物外貌、性格、经历与持续变化的关系。',
+    title: '逐批概括',
+    description: '每批只调用一次模型，并在成功后立即保存进度。',
   },
   {
     marker: '03',
-    title: '文风档案',
-    description: '提炼叙事节奏、句式、修辞及典型描写手法。',
+    title: '分层汇总',
+    description: '逐层合并批次概括，避免一次提交整本长篇小说。',
   },
   {
     marker: '04',
-    title: '世界设定',
-    description: '连接地点、势力、制度、能力体系和原文依据。',
+    title: '详细大纲',
+    description: '输出故事线、人物关系、世界观、伏笔与不确定项。',
   },
 ]
 
@@ -188,18 +189,18 @@ function App() {
         <section className="grid border-b border-black/10 lg:grid-cols-[1.25fr_0.75fr]">
           <div className="px-5 py-14 md:px-10 md:py-20 lg:border-r lg:border-black/10 lg:px-16 lg:py-24">
             <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-[#31533f]/20 bg-[#dfe8dc] px-3 py-1.5 text-xs font-semibold text-[#31533f]">
-              <span>阶段 4</span>
+              <span>阶段 5</span>
               <span className="h-3 w-px bg-[#31533f]/25" />
-              <span>模型网关与 Mock</span>
+              <span>全书细纲工作流</span>
             </div>
 
             <h1 className="max-w-3xl font-serif text-5xl font-semibold leading-[1.04] tracking-[-0.045em] text-[#17221b] md:text-7xl">
               把一部长篇小说，
-              <span className="text-[#55705e]">展开成可验证的故事地图。</span>
+              <span className="text-[#55705e]">整理成可回看的详细大纲。</span>
             </h1>
 
             <p className="mt-7 max-w-2xl text-base leading-8 text-black/58 md:text-lg">
-              上传小说文本后，由 AI Agent 分阶段整理剧情、人物、文风与世界观；每条关键结论都保留返回原文的线索。
+              上传小说文本后，由 AI Agent 分批概括重要内容，再逐层汇总故事线、主要人物关系、世界观与伏笔。
             </p>
 
             <UploadPanel
@@ -219,13 +220,26 @@ function App() {
             />
 
             {uploadedDocument && (
-              <ParsePreview
-                error={parseError}
-                isParsing={parseMutation.isPending}
-                result={parseResult}
-                onResultChange={setParseResult}
-                onParse={() => parseMutation.mutate(uploadedDocument.task_id)}
-              />
+              <>
+                <ParsePreview
+                  error={parseError}
+                  isParsing={parseMutation.isPending}
+                  result={parseResult}
+                  onResultChange={setParseResult}
+                  onParse={() => parseMutation.mutate(uploadedDocument.task_id)}
+                />
+                {parseResult && (
+                  <AnalysisPlanPanel
+                    key={parseResult.chunks
+                      .map(
+                        (chunk) =>
+                          `${chunk.chunk_id}:${chunk.token_count}:${chunk.content_override ?? ''}`,
+                      )
+                      .join('|')}
+                    taskId={uploadedDocument.task_id}
+                  />
+                )}
+              </>
             )}
 
             <div className="mt-4 flex flex-wrap items-center gap-4">
@@ -240,12 +254,12 @@ function App() {
 
           <aside className="flex min-h-[430px] flex-col justify-between bg-[#24382c] p-6 text-[#e9eee7] md:p-10 lg:p-12">
             <div className="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-white/45">
-              <span>Analysis workspace</span>
-              <span>{parseResult ? '02 / 04' : uploadedDocument ? '01 / 04' : '00 / 04'}</span>
+              <span>Outline workspace</span>
+              <span>{parseResult ? '02 / 05' : uploadedDocument ? '01 / 05' : '00 / 05'}</span>
             </div>
 
             <div className="my-12 space-y-3">
-              {analysisModules.map((module) => (
+              {outlineStages.map((module) => (
                 <div
                   key={module.marker}
                   className="grid grid-cols-[auto_1fr] gap-4 rounded-2xl border border-white/10 bg-white/[0.055] p-4"
@@ -266,7 +280,7 @@ function App() {
             </div>
 
             <p className="text-xs leading-5 text-white/35">
-              当前仅展示产品结构。分析能力将在后续阶段逐项接入并独立验收。
+              当前已完成上传、解析与文本模型配置；大纲生成能力将按阶段逐项接入并验收。
             </p>
           </aside>
         </section>
@@ -278,9 +292,9 @@ function App() {
           className="grid gap-px bg-black/10 md:grid-cols-3"
         >
           {[
-            ['输入', 'TXT 小说正文', '校验编码、识别章节并建立引用坐标'],
-            ['分析', 'Agents + Skills', '分层抽取、归并信息并核验引用'],
-            ['输出', '可编辑小说图谱', '查看、修正、生图、仿写与导出'],
+            ['输入', 'TXT 小说正文', '校验编码、识别章节并生成无重叠分析片段'],
+            ['概括', '批次 Agent + Skills', '动态组批、逐批保存并支持失败后继续'],
+            ['输出', '全书详细大纲', '查看、修正并导出故事线与设定梳理'],
           ].map(([eyebrow, title, description], index) => (
             <article
               key={eyebrow}
@@ -305,8 +319,8 @@ function App() {
         </section>
 
         <footer className="flex flex-col gap-2 border-t border-black/10 px-5 py-6 text-xs text-black/42 md:flex-row md:items-center md:justify-between md:px-10">
-          <span>NovelAtlas · AI Agent 小说分析工作台</span>
-          <span>本地优先 · 临时处理 · 结论可追溯</span>
+          <span>NovelAtlas · AI Agent 长篇小说细纲工作台</span>
+          <span>本地优先 · 临时处理 · 批次可恢复</span>
         </footer>
       </div>
     </main>
