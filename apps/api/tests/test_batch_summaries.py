@@ -21,6 +21,7 @@ from novelatlas.skills.batch_summary import (
 from novelatlas.skills.hierarchical_outline import (
     HierarchicalOutlineOutputError,
     parse_final_outline_response,
+    parse_merge_summary_response,
 )
 
 
@@ -328,6 +329,77 @@ def test_final_skill_rejects_references_outside_direct_inputs() -> None:
         )
     except HierarchicalOutlineOutputError as error:
         assert "本节点之外" in str(error)
+    else:
+        raise AssertionError("expected HierarchicalOutlineOutputError")
+
+
+def test_merge_skill_normalizes_sources_array_shorthand() -> None:
+    payload = {
+        "overview": "测试中间汇总",
+        "chapter_outline": [
+            {
+                "chapter_range": "第一章至第二章",
+                "summary": "故事继续推进。",
+                "key_events": ["人物作出决定。"],
+                "sources": ["batch_allowed"],
+            }
+        ],
+        "key_events": [],
+        "characters": [],
+        "worldbuilding": [],
+        "foreshadowing": [],
+        "unresolved_items": [],
+        "uncertainties": [],
+    }
+
+    result = parse_merge_summary_response(
+        response_text=json.dumps(payload, ensure_ascii=False),
+        allowed_input_ids=["batch_allowed"],
+    )
+
+    assert result.chapter_outline[0].sources.input_ids == ["batch_allowed"]
+
+
+def test_final_skill_normalizes_sources_array_but_keeps_source_whitelist() -> None:
+    payload = {
+        "overall_summary": "测试全书概述",
+        "chapter_outline": [],
+        "storylines": [
+            {
+                "name": "主线",
+                "summary": "主线概述",
+                "developments": [],
+                "sources": ["batch_not_allowed"],
+            }
+        ],
+        "characters": [],
+        "worldbuilding": [],
+        "foreshadowing": [],
+        "unresolved_items": [],
+        "conflicts_and_uncertainties": [],
+    }
+
+    try:
+        parse_final_outline_response(
+            response_text=json.dumps(payload, ensure_ascii=False),
+            allowed_input_ids=["batch_allowed"],
+        )
+    except HierarchicalOutlineOutputError as error:
+        assert "本节点之外" in str(error)
+    else:
+        raise AssertionError("expected HierarchicalOutlineOutputError")
+
+
+def test_merge_skill_reports_json_location_without_response_content() -> None:
+    try:
+        parse_merge_summary_response(
+            response_text='{"overview": "未闭合"',
+            allowed_input_ids=["batch_allowed"],
+        )
+    except HierarchicalOutlineOutputError as error:
+        assert "不是有效 JSON" in str(error)
+        assert "第 1 行" in str(error)
+        assert "未闭合" not in str(error)
     else:
         raise AssertionError("expected HierarchicalOutlineOutputError")
 

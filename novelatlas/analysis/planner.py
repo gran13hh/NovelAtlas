@@ -168,7 +168,7 @@ def _chapter_body(
             piece = source[unique_start : reference.end_char]
         else:
             contains_edits = True
-            overlap_tokens = chunker.count(source[reference.start_char:unique_start])
+            overlap_tokens = chunker.count(source[reference.start_char : unique_start])
             encoded_override = chunker.encoding.encode_ordinary(chunk.content_override)
             piece = chunker.encoding.decode(encoded_override[overlap_tokens:])
 
@@ -207,9 +207,7 @@ def _chapter_segments(
             )
         ]
 
-    conservative_prefix = (
-        f"【章节 {chapter.ordinal}：{chapter.title} · 片段 999999】\n"
-    )
+    conservative_prefix = f"【章节 {chapter.ordinal}：{chapter.title} · 片段 999999】\n"
     body_limit = budget.available_content_tokens - chunker.count(conservative_prefix)
     if body_limit < 1:
         raise ValueError(f"章节标题超过可用分析预算：{chapter.title}")
@@ -230,8 +228,7 @@ def _chapter_segments(
         first_ordinal=1,
     )
     part_contents = [
-        body[part.reference.start_char : part.reference.end_char]
-        for part in raw_parts
+        body[part.reference.start_char : part.reference.end_char] for part in raw_parts
     ]
     part_count = len(part_contents)
     return [
@@ -346,16 +343,16 @@ def _batch_material(
     chapter_ids = list(dict.fromkeys(item.chapter_id for item in segment_metadata))
     chunk_ids = list(
         dict.fromkeys(
-            chunk_id
-            for item in segment_metadata
-            for chunk_id in item.source_chunk_ids
+            chunk_id for item in segment_metadata for chunk_id in item.source_chunk_ids
         )
     )
     start_ordinal = segment_metadata[0].chapter_ordinal
     end_ordinal = segment_metadata[-1].chapter_ordinal
     start_title = segment_metadata[0].chapter_title
     end_title = segment_metadata[-1].chapter_title
-    range_label = start_title if start_title == end_title else f"{start_title} → {end_title}"
+    range_label = (
+        start_title if start_title == end_title else f"{start_title} → {end_title}"
+    )
     batch_id = _stable_id(
         "batch",
         task_id,
@@ -413,7 +410,9 @@ def _estimate_merge_work(
             groups.append(current)
 
         if len(groups) == len(item_sizes):
-            groups = [item_sizes[index : index + 2] for index in range(0, len(item_sizes), 2)]
+            groups = [
+                item_sizes[index : index + 2] for index in range(0, len(item_sizes), 2)
+            ]
 
         calls += len(groups)
         input_tokens += sum(

@@ -12,6 +12,7 @@ Merge ordered batch summaries within a model token budget and produce a source-l
 4. Every structured item cites only direct input IDs. The server expands them to retained batch and chapter provenance before persistence.
 5. Return JSON only. Empty categories are empty arrays.
 6. Do not analyze writing style, quote original prose, generate image prompts, imitate the author, or continue the story.
+7. Write every `sources` value as an object such as `{"input_ids": ["batch_xxx"]}`. The parser normalizes the common `sources: ["batch_xxx"]` shorthand, but all other schema and source-ID checks remain strict.
 
 ## Outputs
 

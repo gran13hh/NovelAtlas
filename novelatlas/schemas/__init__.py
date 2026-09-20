@@ -26,8 +26,16 @@ from .analysis import (
     OutlineSource,
     OutlineStoryline,
     OutlineWorldbuilding,
+    UpdateBatchSummaryRequest,
+    UpdateNovelOutlineRequest,
 )
 from .document import DeleteUploadResponse, UploadConstraints, UploadedDocument
+from .exports import (
+    DEFAULT_EXPORT_SECTIONS,
+    ExportFormat,
+    ExportSection,
+    OutlineExportRequest,
+)
 from .models import (
     BrowserModelConfig,
     BrowserModelConnectionConfig,
@@ -43,6 +51,7 @@ from .models import (
 from .parsing import (
     ParsedChapter,
     ParsedDocument,
+    ParsedVolume,
     SourceReference,
     TextChunk,
     TextChunkContent,
@@ -50,6 +59,7 @@ from .parsing import (
 )
 
 __all__ = [
+    "DEFAULT_EXPORT_SECTIONS",
     "AnalysisBatch",
     "AnalysisBudget",
     "AnalysisPlan",
@@ -69,6 +79,8 @@ __all__ = [
     "BrowserTextModelTestRequest",
     "ChapterRangeOutline",
     "DeleteUploadResponse",
+    "ExportFormat",
+    "ExportSection",
     "FinalOutlineRecord",
     "MergeCheckpoint",
     "MergeSummaryContent",
@@ -81,16 +93,20 @@ __all__ = [
     "NovelOutline",
     "OutlineCharacter",
     "OutlineClaim",
+    "OutlineExportRequest",
     "OutlineSource",
     "OutlineStoryline",
     "OutlineWorldbuilding",
     "ParsedChapter",
     "ParsedDocument",
+    "ParsedVolume",
     "SourceReference",
     "TextChunk",
     "TextChunkContent",
     "TextGenerationRequest",
     "TextGenerationResult",
+    "UpdateBatchSummaryRequest",
+    "UpdateNovelOutlineRequest",
     "UpdateTextChunkRequest",
     "UploadConstraints",
     "UploadedDocument",

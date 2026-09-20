@@ -291,6 +291,19 @@ class FinalOutlineAgent:
         )
 
 
+def _confidence_floor(value: Any) -> int:
+    """Conservatively retain uncertainty across coarse direct-input citations."""
+    if isinstance(value, list):
+        return max((_confidence_floor(v) for v in value), default=0)
+    if isinstance(value, dict):
+        own = max(
+            {"uncertain": 2, "inference": 1}.get(value.get("classification"), 0),
+            {"uncertain": 2, "likely": 1}.get(value.get("confidence"), 0),
+        )
+        return max(own, max((_confidence_floor(v) for v in value.values()), default=0))
+    return 0
+
+
 def _expand_sources(
     output: MergeSummaryContent | NovelOutline,
     materials: list[OutlineInputMaterial],
@@ -321,9 +334,25 @@ def _expand_sources(
     for group in groups:
         for item in group:
             referenced = [by_id[input_id] for input_id in item.sources.input_ids]
+            floor = max(
+                (_confidence_floor(source.payload) for source in referenced), default=0
+            )
+            if hasattr(item, "confidence"):
+                current = {"certain": 0, "likely": 1, "uncertain": 2}[item.confidence]
+                item.confidence = ["certain", "likely", "uncertain"][
+                    max(current, floor)
+                ]
+            elif floor and hasattr(item, "summary"):
+                label = "【含不确定信息】" if floor == 2 else "【含模型推断】"
+                if not item.summary.startswith(label):
+                    item.summary = label + item.summary[: 12000 - len(label)]
             item.sources.batch_ids = _ordered_unique(
                 [batch_id for source in referenced for batch_id in source.batch_ids]
             )
             item.sources.chapter_ids = _ordered_unique(
-                [chapter_id for source in referenced for chapter_id in source.chapter_ids]
+                [
+                    chapter_id
+                    for source in referenced
+                    for chapter_id in source.chapter_ids
+                ]
             )

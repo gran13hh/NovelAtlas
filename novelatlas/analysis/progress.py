@@ -42,6 +42,7 @@ def build_progress_snapshot(
     return AnalysisProgressSnapshot(
         event_id=f"progress_{fingerprint}",
         task_id=manifest.task_id,
+        graph_node=manifest.graph_node,
         status=manifest.status,
         phase=_phase(manifest.status),
         completed_batch_count=manifest.completed_batch_count,

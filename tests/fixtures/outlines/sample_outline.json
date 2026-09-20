@@ -1,0 +1,59 @@
+{
+  "overall_summary": "少年林舟在停云山收到一封旧信，由此踏上追查家族旧案的旅程。一路上，他逐渐发现旧案与山门隐秘规则之间存在联系。",
+  "chapter_outline": [
+    {
+      "chapter_range": "第一章至第二章",
+      "summary": "林舟收到顾先生留下的密信，并决定离开停云山。",
+      "key_events": ["收到密信", "决定下山"],
+      "sources": {"input_ids": ["batch_aaaaaaaaaaaaaaaa"], "batch_ids": ["batch_aaaaaaaaaaaaaaaa"], "chapter_ids": ["chapter_aaaaaaaaaaaaaaaa"]}
+    },
+    {
+      "chapter_range": "第三章至第五章",
+      "summary": "林舟在山外结识同行者，并获得旧案的第一条可靠线索。",
+      "key_events": ["结识同行者", "确认旧案线索"],
+      "sources": {"input_ids": ["batch_bbbbbbbbbbbbbbbb"], "batch_ids": ["batch_bbbbbbbbbbbbbbbb"], "chapter_ids": ["chapter_bbbbbbbbbbbbbbbb"]}
+    }
+  ],
+  "storylines": [
+    {
+      "name": "旧案追查",
+      "summary": "林舟从被动接受消息转为主动调查，并逐步触及山门往事。",
+      "developments": ["密信引出旧案", "山外线索证明旧案并未结束", "山门规则与旧案产生交集"],
+      "sources": {"input_ids": ["batch_aaaaaaaaaaaaaaaa"], "batch_ids": ["batch_aaaaaaaaaaaaaaaa", "batch_bbbbbbbbbbbbbbbb"], "chapter_ids": ["chapter_aaaaaaaaaaaaaaaa", "chapter_bbbbbbbbbbbbbbbb"]}
+    }
+  ],
+  "characters": [
+    {
+      "name": "林舟",
+      "summary": "谨慎、重视承诺的主人公，面对旧案时逐渐学会主动判断。",
+      "relationships": ["顾先生既是引路人，也是旧案的重要知情者", "与同行者从相互试探转为初步信任"],
+      "changes": ["从迟疑观望转为主动追查", "开始怀疑自己熟悉的山门秩序"],
+      "sources": {"input_ids": ["batch_aaaaaaaaaaaaaaaa"], "batch_ids": ["batch_aaaaaaaaaaaaaaaa", "batch_bbbbbbbbbbbbbbbb"], "chapter_ids": ["chapter_aaaaaaaaaaaaaaaa", "chapter_bbbbbbbbbbbbbbbb"]},
+      "confidence": "certain"
+    }
+  ],
+  "worldbuilding": [
+    {
+      "category": "location",
+      "name": "停云山",
+      "description": "位于神洲西陲的清幽山门，表面的平静之下保存着与旧案有关的禁令。",
+      "sources": {"input_ids": ["batch_aaaaaaaaaaaaaaaa"], "batch_ids": ["batch_aaaaaaaaaaaaaaaa"], "chapter_ids": ["chapter_aaaaaaaaaaaaaaaa"]},
+      "confidence": "certain"
+    }
+  ],
+  "foreshadowing": [
+    {
+      "description": "顾先生在信中刻意避开了旧案发生的具体日期，可能另有隐情。",
+      "sources": {"input_ids": ["batch_aaaaaaaaaaaaaaaa"], "batch_ids": ["batch_aaaaaaaaaaaaaaaa"], "chapter_ids": ["chapter_aaaaaaaaaaaaaaaa"]},
+      "confidence": "likely"
+    }
+  ],
+  "unresolved_items": [
+    {
+      "description": "顾先生目前身在何处仍未说明。",
+      "sources": {"input_ids": ["batch_aaaaaaaaaaaaaaaa"], "batch_ids": ["batch_aaaaaaaaaaaaaaaa"], "chapter_ids": ["chapter_aaaaaaaaaaaaaaaa"]},
+      "confidence": "uncertain"
+    }
+  ],
+  "conflicts_and_uncertainties": []
+}

@@ -69,6 +69,7 @@ export function ParsePreview({
               结构解析完成
             </p>
             <h2 className="mt-2 font-serif text-2xl font-semibold">
+              {result.volumes.length > 0 && `${number.format(result.volumes.length)} 卷 · `}
               {number.format(result.chapter_count)} 个章节 ·{' '}
               {number.format(result.chunk_count)} 个文本块
             </h2>
@@ -125,6 +126,11 @@ export function ParsePreview({
                 <h3 className="truncate font-semibold text-[#17221b]">
                   {chapter.title}
                 </h3>
+                {chapter.volume_title && (
+                  <p className="mt-1 text-[11px] font-semibold text-[#55705e]">
+                    {chapter.volume_title}
+                  </p>
+                )}
                 <p className="mt-1 text-xs text-black/40">
                   {number.format(chapter.character_count)} 字符 ·{' '}
                   {number.format(chapter.token_count)} Token ·{' '}

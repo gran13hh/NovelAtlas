@@ -1,5 +1,5 @@
 export type ModelProviderStatus = {
-  provider: 'mock' | 'openai'
+  provider: 'mock' | 'openai' | 'deepseek'
   model: string
   base_url: string | null
   configured: boolean
@@ -14,7 +14,7 @@ export type ModelGatewayStatus = {
 }
 
 export type BrowserProviderConfig = {
-  provider: 'mock' | 'openai'
+  provider: 'mock' | 'openai' | 'deepseek'
   model: string
   base_url: string
   api_key: string
@@ -34,12 +34,12 @@ export type BrowserModelGatewayConfig = {
 }
 
 export type ModelCatalogResult = {
-  provider: 'mock' | 'openai'
+  provider: 'mock' | 'openai' | 'deepseek'
   models: string[]
 }
 
 export type TextGenerationResult = {
-  provider: 'mock' | 'openai'
+  provider: 'mock' | 'openai' | 'deepseek'
   model: string
   content: string
   request_id: string | null

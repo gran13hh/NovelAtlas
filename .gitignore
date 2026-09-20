@@ -36,3 +36,6 @@ artifacts/
 # Generated exports
 exports/
 *.docx
+
+# Local development documents and verification backups
+/backup/

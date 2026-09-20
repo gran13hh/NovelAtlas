@@ -18,6 +18,8 @@ from .config import Settings
 from .dependencies import create_model_gateway
 from .routes.analyses import router as analyses_router
 from .routes.documents import router as documents_router
+from .routes.exports import router as exports_router
+from .routes.knowledge import router as knowledge_router
 from .routes.models import router as models_router
 from .routes.uploads import router as uploads_router
 
@@ -88,8 +90,10 @@ def create_app(
     )
     application.include_router(uploads_router)
     application.include_router(documents_router)
+    application.include_router(exports_router)
     application.include_router(models_router)
     application.include_router(analyses_router)
+    application.include_router(knowledge_router)
 
     @application.get(
         "/api/health",

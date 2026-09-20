@@ -92,6 +92,17 @@ def parse_batch_summary_response(
     except (json.JSONDecodeError, ValidationError, TypeError) as error:
         raise BatchSummaryOutputError("模型没有返回符合要求的批次概括 JSON") from error
 
+    validate_batch_summary_sources(summary=summary, batch=batch)
+    return summary
+
+
+def validate_batch_summary_sources(
+    *,
+    summary: BatchSummaryContent,
+    batch: AnalysisBatch,
+) -> None:
+    """Reject user or model summaries that cite outside their source batch."""
+
     allowed_chapters = set(batch.chapter_ids)
     allowed_chunks = set(batch.source_chunk_ids)
     referenced_items = [
@@ -106,4 +117,3 @@ def parse_batch_summary_response(
             raise BatchSummaryOutputError("批次概括引用了计划之外的章节")
         if not set(item.source_chunk_ids).issubset(allowed_chunks):
             raise BatchSummaryOutputError("批次概括引用了计划之外的文本块")
-    return summary

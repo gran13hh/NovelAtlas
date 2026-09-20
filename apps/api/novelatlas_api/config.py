@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     analysis_output_reserve_tokens: int = Field(default=4_000, ge=32, le=32_000)
     analysis_safety_margin_tokens: int = Field(default=2_000, ge=512)
 
-    text_model_provider: Literal["mock", "openai"] = "mock"
+    text_model_provider: Literal["mock", "openai", "deepseek"] = "mock"
     text_model_name: str = Field(default="novelatlas-mock-text", min_length=1)
     text_model_base_url: str = Field(
         default="https://api.openai.com/v1",

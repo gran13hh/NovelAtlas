@@ -32,17 +32,20 @@ def test_recognizes_common_headings_and_preserves_exact_ranges() -> None:
     assert [chapter.title for chapter in result.chapters] == [
         "卷首",
         "正文 第十二章 雨夜来客",
-        "卷二 山河远阔",
+        "卷二 山河远阔 · 卷首",
         "尾声",
     ]
     assert [chapter.heading_kind for chapter in result.chapters] == [
         "special",
         "chapter",
-        "volume",
+        "special",
         "special",
     ]
     assert result.used_fallback_chapter is False
     assert result.chapter_count == 4
+    assert len(result.volumes) == 1
+    assert result.volumes[0].title == "卷二 山河远阔"
+    assert result.chapters[2].volume_id == result.volumes[0].volume_id
 
     for chapter in result.chapters:
         assert chapter.character_count == (
@@ -65,9 +68,8 @@ def test_recognizes_common_headings_and_preserves_exact_ranges() -> None:
         ("第一百二十章 风雪", "chapter"),
         ("第１２回 故人", "chapter"),
         ("正文 第3节 夜谈", "chapter"),
-        ("第三卷", "volume"),
-        ("下卷 归途", "volume"),
         ("番外 灯会", "special"),
+        ("Chapter 12 Nightfall", "chapter"),
     ],
 )
 def test_supports_common_heading_number_styles(
@@ -82,6 +84,82 @@ def test_supports_common_heading_number_styles(
     assert result.chapters[0].title == title
     assert result.chapters[0].heading_kind == expected_kind
     assert result.used_fallback_chapter is False
+
+
+@pytest.mark.parametrize("title", ["第三卷", "卷１２ 山河", "下卷 归途"])
+def test_supports_common_volume_number_styles(title: str) -> None:
+    text = f"{title}\n第一章 开始\n正文内容。"
+
+    result = make_parser().parse(task_id=TASK_ID, filename="novel.txt", text=text)
+
+    assert [volume.title for volume in result.volumes] == [title]
+    assert result.chapters[0].title == "第一章 开始"
+    assert result.chapters[0].volume_id == result.volumes[0].volume_id
+
+
+def test_volume_is_a_container_instead_of_an_empty_chapter() -> None:
+    text = (
+        "第1卷\n\n"
+        "第一章 凝真\n神洲西陲，停云山静立荒漠。\n"
+        "第二章 入门\n少年沿石阶登山。\n"
+        "第二卷 山外\n"
+        "第3章 远行\n众人离开山门。\n"
+    )
+
+    result = make_parser().parse(task_id=TASK_ID, filename="novel.txt", text=text)
+
+    assert [volume.title for volume in result.volumes] == ["第1卷", "第二卷 山外"]
+    assert [chapter.title for chapter in result.chapters] == [
+        "第一章 凝真",
+        "第二章 入门",
+        "第3章 远行",
+    ]
+    assert all(chapter.heading_kind == "chapter" for chapter in result.chapters)
+    assert result.volumes[0].chapter_ids == [
+        result.chapters[0].chapter_id,
+        result.chapters[1].chapter_id,
+    ]
+    assert result.volumes[1].chapter_ids == [result.chapters[2].chapter_id]
+    assert all(chapter.token_count > 0 for chapter in result.chapters)
+
+
+def test_rejects_obvious_embedded_chapter_heading_outlier() -> None:
+    text = (
+        "第三十章 对决\n人物开始研读秘籍。\n"
+        "第三章 修炼要诀\n"
+        "这其实是秘籍内文，不是小说章节。\n"
+        "第三十一章 破关\n人物完成修炼。\n"
+    )
+
+    result = make_parser().parse(task_id=TASK_ID, filename="novel.txt", text=text)
+
+    assert [chapter.title for chapter in result.chapters] == [
+        "第三十章 对决",
+        "第三十一章 破关",
+    ]
+    first_content = text[
+        result.chapters[0].content_start_char : result.chapters[0].content_end_char
+    ]
+    assert "第三章 修炼要诀" in first_content
+
+
+def test_mixed_chinese_arabic_fullwidth_and_english_numbering() -> None:
+    text = (
+        "第一章 开端\n甲。\n"
+        "第2章 推进\n乙。\n"
+        "第３章 转折\n丙。\n"
+        "Chapter 4 Ending\n丁。\n"
+    )
+
+    result = make_parser().parse(task_id=TASK_ID, filename="novel.txt", text=text)
+
+    assert result.chapter_count == 4
+    assert [chapter.title for chapter in result.chapters] == [
+        "第一章 开端",
+        "第2章 推进",
+        "第３章 转折",
+        "Chapter 4 Ending",
+    ]
 
 
 def test_parse_is_deterministic_and_chunk_windows_overlap() -> None:

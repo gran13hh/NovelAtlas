@@ -29,6 +29,8 @@ export type ParsedChapter = {
   ordinal: number
   title: string
   heading_kind: 'chapter' | 'volume' | 'special' | 'fallback'
+  volume_id: string | null
+  volume_title: string | null
   heading_start_char: number
   heading_end_char: number
   content_start_char: number
@@ -39,8 +41,19 @@ export type ParsedChapter = {
   chunk_ids: string[]
 }
 
+export type ParsedVolume = {
+  volume_id: string
+  ordinal: number
+  title: string
+  heading_start_char: number
+  heading_end_char: number
+  content_start_char: number
+  content_end_char: number
+  chapter_ids: string[]
+}
+
 export type ParsedDocument = {
-  schema_version: 1
+  schema_version: 1 | 2
   task_id: string
   filename: string
   tokenizer: string
@@ -49,6 +62,7 @@ export type ParsedDocument = {
   chapter_count: number
   chunk_count: number
   used_fallback_chapter: boolean
+  volumes: ParsedVolume[]
   chapters: ParsedChapter[]
   chunks: TextChunk[]
 }
@@ -75,6 +89,11 @@ export async function parseDocument(taskId: string): Promise<ParsedDocument> {
 
   const payload = (await response.json().catch(() => null)) as unknown
   throw new Error(responseDetail(payload, `解析失败（${response.status}）`))
+}
+
+export async function fetchParsedDocument(taskId: string): Promise<ParsedDocument> {
+  const response = await fetch(`/api/documents/${taskId}/parse`)
+  return parsedResponse(response, `读取解析结果失败（${response.status}）`)
 }
 
 async function parsedResponse(

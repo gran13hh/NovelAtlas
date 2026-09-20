@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, SecretStr, model_validator
 
-ModelProviderName = Literal["mock", "openai"]
+ModelProviderName = Literal["mock", "openai", "deepseek"]
 
 
 class ModelUsage(BaseModel):

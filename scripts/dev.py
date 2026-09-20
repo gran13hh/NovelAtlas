@@ -88,6 +88,9 @@ def check_prerequisites() -> str:
 def start_servers(npm: str, api_port: int, web_port: int) -> list[ServerProcess]:
     """Start both development servers in independent process groups."""
 
+    frontend_environment = os.environ.copy()
+    frontend_environment["NOVELATLAS_API_PORT"] = str(api_port)
+
     backend = subprocess.Popen(
         [
             str(VENV_PYTHON),
@@ -116,6 +119,7 @@ def start_servers(npm: str, api_port: int, web_port: int) -> list[ServerProcess]
             "--strictPort",
         ],
         cwd=WEB_ROOT,
+        env=frontend_environment,
         start_new_session=True,
     )
     return [

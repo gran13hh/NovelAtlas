@@ -5,18 +5,25 @@ import { createAnalysisPlan } from './api'
 
 type AnalysisPlanPanelProps = {
   taskId: string
+  existingPlan?: Awaited<ReturnType<typeof createAnalysisPlan>> | null
+  onPlanCreated?: (plan: Awaited<ReturnType<typeof createAnalysisPlan>>) => void
 }
 
 const number = new Intl.NumberFormat('zh-CN')
 
-export function AnalysisPlanPanel({ taskId }: AnalysisPlanPanelProps) {
+export function AnalysisPlanPanel({
+  taskId,
+  existingPlan,
+  onPlanCreated,
+}: AnalysisPlanPanelProps) {
   const planning = useMutation({
     mutationFn: () => {
       const config = loadBrowserModelConfig()
       return createAnalysisPlan(taskId, config.analysis_budget)
     },
+    onSuccess: onPlanCreated,
   })
-  const plan = planning.data
+  const plan = planning.data ?? existingPlan
 
   return (
     <section className="mt-4 overflow-hidden rounded-2xl border border-[#31533f]/20 bg-white/70 shadow-[0_16px_40px_rgba(49,83,63,0.06)]">

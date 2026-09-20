@@ -5,6 +5,8 @@ pydantic-settings==2.15.0
 
 # Agent orchestration and streaming progress.
 langgraph==1.2.11
+langgraph-checkpoint-sqlite==3.1.0
+
 sse-starlette==3.4.8
 
 # TXT encoding detection, deterministic token counting, and Word export.

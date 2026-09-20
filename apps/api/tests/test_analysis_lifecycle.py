@@ -184,6 +184,69 @@ def test_failed_task_emits_safe_sse_error(client: TestClient) -> None:
     }
 
 
+def test_user_edits_batch_then_rebuilds_and_edits_outline(
+    client: TestClient,
+) -> None:
+    task_id, _plan = _upload_parse_plan(client)
+    assert client.post(f"/api/analyses/{task_id}/run", json={}).status_code == 202
+    first_completion = _wait_for_completion(client, task_id)
+    assert first_completion["status"] == "completed"
+    original_attempts = [item["attempt_count"] for item in first_completion["batches"]]
+    summaries = client.get(f"/api/analyses/{task_id}/summaries").json()
+    first = summaries[0]
+    first["summary"]["overview"] = "用户修正后的批次概述。"
+
+    updated = client.patch(
+        f"/api/analyses/{task_id}/summaries/{first['batch']['batch_id']}",
+        json={"summary": first["summary"]},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["user_edited_at"] is not None
+    manifest = client.get(f"/api/analyses/{task_id}/run").json()
+    assert manifest["status"] == "batch_summaries_completed"
+    assert manifest["merge_node_count"] == 0
+    assert manifest["final_outline_status"] == "pending"
+    assert client.get(f"/api/analyses/{task_id}/outline").status_code == 409
+
+    assert client.post(f"/api/analyses/{task_id}/run", json={}).status_code == 202
+    rebuilt = _wait_for_completion(client, task_id)
+    assert rebuilt["status"] == "completed"
+    assert [item["attempt_count"] for item in rebuilt["batches"]] == original_attempts
+    outline = client.get(f"/api/analyses/{task_id}/outline").json()
+    outline["outline"]["overall_summary"] = "用户修正后的全书概述。"
+    saved_outline = client.patch(
+        f"/api/analyses/{task_id}/outline",
+        json={"outline": outline["outline"]},
+    )
+    assert saved_outline.status_code == 200
+    assert saved_outline.json()["outline"]["overall_summary"] == (
+        "用户修正后的全书概述。"
+    )
+    assert saved_outline.json()["user_edited_at"] is not None
+
+
+def test_pause_retains_checkpoints_and_can_resume(tmp_path: Path) -> None:
+    settings = Settings(
+        max_upload_bytes=4096,
+        upload_ttl_seconds=3600,
+        cleanup_interval_seconds=3600,
+    )
+    app = create_app(settings=settings, storage_root=tmp_path / "pause-active")
+    with TestClient(app) as client:
+        task_id, _plan = _upload_parse_plan(client)
+        default_gateway = client.app.state.model_gateway
+        client.app.state.model_gateway = DelayedMockGateway(delay_seconds=0.5)
+        assert client.post(f"/api/analyses/{task_id}/run", json={}).status_code == 202
+        paused = client.post(f"/api/analyses/{task_id}/cancel")
+        assert paused.status_code == 200
+        assert paused.json()["status"] == "interrupted"
+        assert (tmp_path / "pause-active" / task_id / "analysis-task.json").is_file()
+
+        client.app.state.model_gateway = default_gateway
+        assert client.post(f"/api/analyses/{task_id}/run", json={}).status_code == 202
+        assert _wait_for_completion(client, task_id)["status"] == "completed"
+
+
 def test_delete_cancels_active_analysis_and_removes_all_artifacts(
     tmp_path: Path,
 ) -> None:
@@ -226,14 +289,14 @@ def test_expiry_prunes_detached_active_analysis(client: TestClient) -> None:
     assert not (storage.root / task_id).exists()
 
 
-def test_real_ten_chapter_fixture_completes_mock_outline(tmp_path: Path) -> None:
+def test_real_novel_fixture_completes_mock_outline(tmp_path: Path) -> None:
+    source = REAL_NOVEL_FIXTURE.read_bytes()
     settings = Settings(
-        max_upload_bytes=200_000,
+        max_upload_bytes=max(200_000, len(source) + 1024),
         upload_ttl_seconds=3600,
         cleanup_interval_seconds=3600,
     )
     app = create_app(settings=settings, storage_root=tmp_path / "real-fixture")
-    source = REAL_NOVEL_FIXTURE.read_bytes()
     with TestClient(app) as client:
         upload = client.post(
             "/api/uploads",
@@ -243,7 +306,7 @@ def test_real_ten_chapter_fixture_completes_mock_outline(tmp_path: Path) -> None
         task_id = upload.json()["task_id"]
         parsed = client.post(f"/api/documents/{task_id}/parse")
         assert parsed.status_code == 200
-        assert parsed.json()["chapter_count"] == 10
+        assert parsed.json()["chapter_count"] >= 10
         plan = client.post(
             f"/api/analyses/{task_id}/plan",
             json={

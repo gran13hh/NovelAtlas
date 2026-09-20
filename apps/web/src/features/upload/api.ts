@@ -24,6 +24,13 @@ export async function fetchUploadConstraints(): Promise<UploadConstraints> {
   return response.json() as Promise<UploadConstraints>
 }
 
+export async function fetchUpload(taskId: string): Promise<UploadedDocument> {
+  const response = await fetch(`/api/uploads/${taskId}`)
+  if (response.ok) return response.json() as Promise<UploadedDocument>
+  const payload = (await response.json().catch(() => null)) as unknown
+  throw new Error(responseDetail(payload, `读取临时任务失败（${response.status}）`))
+}
+
 type UploadOptions = {
   signal: AbortSignal
   onProgress: (progress: number) => void

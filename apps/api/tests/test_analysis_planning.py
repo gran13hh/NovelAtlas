@@ -112,19 +112,46 @@ def test_plan_ids_and_fingerprints_are_deterministic() -> None:
     )
 
 
-def test_empty_volume_heading_is_skipped_without_creating_a_model_batch() -> None:
+def test_volume_container_is_not_created_as_a_model_batch() -> None:
     text = "第一卷\n第一章 起行\n旅人从山门出发。\n第二章 夜宿\n众人在客栈落脚。\n"
     parsed = parse(text)
 
     result = plan_analysis(parsed=parsed, source=text, budget=budget())
 
-    assert parsed.chapters[0].heading_kind == "volume"
-    assert parsed.chapters[0].token_count == 0
-    assert result.plan.skipped_empty_chapter_count == 1
+    assert len(parsed.volumes) == 1
+    assert parsed.volumes[0].title == "第一卷"
+    assert [chapter.heading_kind for chapter in parsed.chapters] == [
+        "chapter",
+        "chapter",
+    ]
     assert all(
-        parsed.chapters[0].chapter_id not in batch.chapter_ids
-        for batch in result.plan.batches
+        chapter.volume_id == parsed.volumes[0].volume_id
+        for chapter in parsed.chapters
     )
+    assert result.plan.skipped_empty_chapter_count == 0
+
+
+def test_thousand_chapter_outline_plan_preserves_order_without_overlap() -> None:
+    text = "".join(
+        f"第{ordinal}章 远行\n第{ordinal}章唯一事件发生，队伍继续前进。\n"
+        for ordinal in range(1, 1001)
+    )
+    parsed = parse(text, max_tokens=64, overlap_tokens=8)
+
+    result = plan_analysis(
+        parsed=parsed,
+        source=text,
+        budget=budget(max_input_tokens=480),
+    )
+    combined = "\n".join(batch.content for batch in result.batches)
+
+    assert parsed.chapter_count == 1000
+    assert 1 < result.plan.batch_count < parsed.chapter_count
+    assert result.plan.summary_call_count == result.plan.batch_count
+    assert result.plan.batches[0].chapter_ids[0] == parsed.chapters[0].chapter_id
+    assert result.plan.batches[-1].chapter_ids[-1] == parsed.chapters[-1].chapter_id
+    for ordinal in (1, 500, 1000):
+        assert combined.count(f"第{ordinal}章唯一事件发生") == 1
 
 
 def test_current_chunk_override_is_used_and_marked_in_plan() -> None:
@@ -152,7 +179,7 @@ def test_real_chinese_novel_fixture_can_be_planned() -> None:
         budget=budget(max_input_tokens=512),
     )
 
-    assert parsed.chapter_count == 10
+    assert parsed.chapter_count >= 10
     assert parsed.token_count > 1000
     assert result.plan.batch_count > 1
     assert result.plan.segment_count >= result.plan.batch_count

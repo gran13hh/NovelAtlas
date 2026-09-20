@@ -23,10 +23,12 @@ from novelatlas.schemas.analysis import (
     AnalysisTaskError,
     AnalysisTaskManifest,
     BatchCheckpoint,
+    BatchSummaryContent,
     BatchSummaryRecord,
     FinalOutlineRecord,
     MergeCheckpoint,
     MergeSummaryRecord,
+    NovelOutline,
 )
 from novelatlas.schemas.parsing import ParsedDocument
 from novelatlas.services.temporary_storage import (
@@ -34,7 +36,10 @@ from novelatlas.services.temporary_storage import (
     TemporaryUploadStorage,
     UploadNotFoundError,
 )
-from novelatlas.skills.batch_summary import BatchSummaryOutputError
+from novelatlas.skills.batch_summary import (
+    BatchSummaryOutputError,
+    validate_batch_summary_sources,
+)
 from novelatlas.skills.hierarchical_outline import (
     FINAL_OUTLINE_INSTRUCTIONS,
     MERGE_SUMMARY_INSTRUCTIONS,
@@ -60,6 +65,10 @@ class AnalysisTaskAlreadyRunningError(RuntimeError):
 
 class AnalysisTaskNotFoundError(FileNotFoundError):
     """Raised when no batch-summary manifest has been created."""
+
+
+class AnalysisTaskNotRunningError(RuntimeError):
+    """Raised when cancellation targets an inactive analysis task."""
 
 
 class AnalysisPlanMismatchError(ValueError):
@@ -116,6 +125,21 @@ class BatchSummaryRunner:
                     manifest.final_outline_status = "pending"
 
         if manifest.final_outline_status == "completed":
+            try:
+                revision = self._summaries_revision(task_id)
+                self.load_outline(task_id)
+            except (ArtifactNotFoundError, ValidationError):
+                self._reset_hierarchy(manifest)
+            else:
+                if (
+                    manifest.summary_revision is not None
+                    and manifest.summary_revision != revision
+                ):
+                    self._reset_hierarchy(manifest)
+                else:
+                    # Existing completed records without this additive field are adopted once.
+                    manifest.summary_revision = revision
+        if manifest.final_outline_status == "completed":
             manifest.status = "completed"
         elif manifest.batch_count == manifest.completed_batch_count:
             manifest.status = "batch_summaries_completed"
@@ -126,12 +150,42 @@ class BatchSummaryRunner:
         self,
         task_id: str,
         gateway: ModelGateway,
+        *,
+        batch_ids: set[str] | None = None,
+        graph_dispatch: bool = True,
     ) -> AnalysisTaskManifest:
+        if graph_dispatch and self.load_manifest(task_id).engine == "langgraph":
+            from .graph import run_graph
+
+            try:
+                return await run_graph(self, task_id, gateway)
+            except asyncio.CancelledError:
+                self.mark_interrupted(task_id)
+                raise
+            except Exception as error:  # noqa: BLE001 -- normalize failures at the graph task boundary
+                manifest = self.load_manifest(task_id)
+                manifest.status = "failed"
+                manifest.error = AnalysisTaskError(
+                    code=getattr(error, "code", "graph_execution_failed"),
+                    message="图执行失败，请查看节点跟踪并恢复任务",
+                    retryable=True,
+                )
+                manifest.updated_at = datetime.now(UTC)
+                self._save_manifest(manifest)
+                return manifest
         plan = await asyncio.to_thread(self._load_plan, task_id)
+        if graph_dispatch:
+            from .telemetry import Trace, TracedGateway
+
+            gateway = TracedGateway(
+                gateway, Trace(self.storage, task_id), plan.tokenizer
+            )
         planning = await asyncio.to_thread(self._reconstruct_plan, task_id, plan)
         manifest = await asyncio.to_thread(self._load_manifest, task_id)
         if manifest.plan_id != planning.plan.plan_id:
-            raise AnalysisPlanMismatchError("当前正文与已保存批次计划不一致，请重新规划")
+            raise AnalysisPlanMismatchError(
+                "当前正文与已保存批次计划不一致，请重新规划"
+            )
 
         manifest.status = "running"
         manifest.error = None
@@ -141,6 +195,8 @@ class BatchSummaryRunner:
         current_checkpoint: BatchCheckpoint | None = None
         try:
             for batch in planning.batches:
+                if batch_ids is not None and batch.metadata.batch_id not in batch_ids:
+                    continue
                 checkpoint = self._checkpoint(manifest, batch.metadata.batch_id)
                 current_checkpoint = checkpoint
                 existing = await asyncio.to_thread(
@@ -214,6 +270,9 @@ class BatchSummaryRunner:
                 self._complete_checkpoint(manifest, checkpoint, record)
                 await asyncio.to_thread(self._save_manifest, manifest)
 
+            if batch_ids is not None:
+                return manifest
+            current_checkpoint = None
             manifest.status = "batch_summaries_completed"
             manifest.current_batch_id = None
             manifest.error = None
@@ -231,10 +290,20 @@ class BatchSummaryRunner:
                 message="分析任务已中断，可重新提交模型配置后继续",
                 retryable=True,
                 batch_id=(current_checkpoint.batch_id if current_checkpoint else None),
+                merge_node_id=manifest.current_merge_node_id,
             )
-            if current_checkpoint is not None and current_checkpoint.status == "running":
+            if (
+                current_checkpoint is not None
+                and current_checkpoint.status == "running"
+            ):
                 current_checkpoint.status = "failed"
                 current_checkpoint.last_error = failure
+            for merge_checkpoint in manifest.merge_nodes:
+                if merge_checkpoint.status == "running":
+                    merge_checkpoint.status = "failed"
+                    merge_checkpoint.last_error = failure
+            if manifest.final_outline_status == "running":
+                manifest.final_outline_status = "failed"
             manifest.status = "interrupted"
             manifest.error = failure
             manifest.current_batch_id = None
@@ -305,8 +374,49 @@ class BatchSummaryRunner:
             self.storage.read_json_artifact(task_id, FINAL_OUTLINE_ARTIFACT)
         )
 
+    def update_summary(
+        self,
+        task_id: str,
+        batch_id: str,
+        summary: BatchSummaryContent,
+    ) -> BatchSummaryRecord:
+        """Persist a user correction and invalidate only derived merge results."""
+
+        manifest = self._load_manifest(task_id)
+        checkpoint = self._checkpoint(manifest, batch_id)
+        if checkpoint.status != "completed" or not checkpoint.summary_artifact:
+            raise ArtifactNotFoundError(self._summary_artifact(batch_id))
+        record = BatchSummaryRecord.model_validate_json(
+            self.storage.read_json_artifact(task_id, checkpoint.summary_artifact)
+        )
+        validate_batch_summary_sources(summary=summary, batch=record.batch)
+        record.summary = summary
+        record.user_edited_at = datetime.now(UTC)
+        self._save_summary(record)
+        self._reset_hierarchy(manifest)
+        self._save_manifest(manifest)
+        return record
+
+    def update_outline(
+        self,
+        task_id: str,
+        outline: NovelOutline,
+    ) -> FinalOutlineRecord:
+        """Persist a validated user correction to the final outline artifact."""
+
+        record = self.load_outline(task_id)
+        self._validate_outline_edit(record, outline)
+        record.outline = outline
+        record.user_edited_at = datetime.now(UTC)
+        self._save_outline(record)
+        manifest = self._load_manifest(task_id)
+        manifest.updated_at = record.user_edited_at
+        self._save_manifest(manifest)
+        return record
+
     def discard_artifacts(self, task_id: str, *, include_plan: bool) -> None:
         try:
+            self._discard_graph_artifacts(task_id)
             self.storage.delete_json_artifact(task_id, TASK_ARTIFACT)
             self.storage.delete_json_artifacts(task_id, SUMMARY_ARTIFACT_PREFIX)
             self.storage.delete_json_artifacts(task_id, MERGE_ARTIFACT_PREFIX)
@@ -315,6 +425,72 @@ class BatchSummaryRunner:
                 self.storage.delete_json_artifact(task_id, PLAN_ARTIFACT)
         except UploadNotFoundError:
             return
+
+    def _discard_graph_artifacts(self, task_id: str) -> None:
+        for prefix in ["semantic-plan", "domain-", "review-", "knowledge-report"]:
+            self.storage.delete_json_artifacts(task_id, prefix)
+        root = self.storage.source_path(task_id).parent
+        for name in [
+            "graph.sqlite",
+            "graph.sqlite-wal",
+            "graph.sqlite-shm",
+            "retrieval.sqlite",
+        ]:
+            (root / name).unlink(missing_ok=True)
+
+    def _reset_hierarchy(self, manifest: AnalysisTaskManifest) -> None:
+        self._discard_graph_artifacts(manifest.task_id)
+        self.storage.delete_json_artifacts(
+            manifest.task_id,
+            MERGE_ARTIFACT_PREFIX,
+        )
+        self.storage.delete_json_artifact(
+            manifest.task_id,
+            FINAL_OUTLINE_ARTIFACT,
+        )
+        manifest.merge_nodes = []
+        manifest.merge_node_count = 0
+        manifest.completed_merge_node_count = 0
+        manifest.current_merge_node_id = None
+        manifest.final_outline_status = "pending"
+        manifest.final_outline_attempt_count = 0
+        manifest.final_outline_artifact = None
+        manifest.summary_revision = None
+        manifest.status = (
+            "batch_summaries_completed"
+            if manifest.completed_batch_count == manifest.batch_count
+            else "failed"
+        )
+        manifest.error = None
+        manifest.updated_at = datetime.now(UTC)
+
+    @staticmethod
+    def _validate_outline_edit(
+        record: FinalOutlineRecord,
+        outline: NovelOutline,
+    ) -> None:
+        groups = (
+            outline.chapter_outline,
+            outline.storylines,
+            outline.characters,
+            outline.worldbuilding,
+            outline.foreshadowing,
+            outline.unresolved_items,
+            outline.conflicts_and_uncertainties,
+        )
+        allowed_inputs = set(record.input_ids)
+        allowed_batches = set(record.source_batch_ids)
+        allowed_chapters = set(record.source_chapter_ids)
+        for group in groups:
+            for item in group:
+                if not set(item.sources.input_ids).issubset(allowed_inputs):
+                    raise HierarchicalOutlineOutputError(
+                        "细纲修正引用了根节点之外的输入"
+                    )
+                if not set(item.sources.batch_ids).issubset(allowed_batches):
+                    raise HierarchicalOutlineOutputError("细纲修正引用了计划之外的批次")
+                if not set(item.sources.chapter_ids).issubset(allowed_chapters):
+                    raise HierarchicalOutlineOutputError("细纲修正引用了计划之外的章节")
 
     def _reconstruct_plan(
         self,
@@ -466,7 +642,44 @@ class BatchSummaryRunner:
         manifest: AnalysisTaskManifest,
         gateway: ModelGateway,
     ) -> AnalysisTaskManifest:
-        materials = [self._batch_material(record) for record in self.load_summaries(task_id)]
+        materials = [
+            self._batch_material(record) for record in self.load_summaries(task_id)
+        ]
+        if manifest.engine == "langgraph":
+            from novelatlas.schemas.knowledge import KnowledgeReport
+
+            report = KnowledgeReport.model_validate_json(
+                self.storage.read_json_artifact(task_id, "knowledge-report")
+            )
+            for domain in report.domains:
+                chapter_ids = tuple(
+                    dict.fromkeys(
+                        e.chapter_id for item in domain.items for e in item.evidence
+                    )
+                )
+                if not chapter_ids:
+                    continue
+                batch_ids = tuple(
+                    b.batch_id
+                    for b in plan.batches
+                    if set(b.chapter_ids) & set(chapter_ids)
+                )
+                materials.append(
+                    OutlineInputMaterial(
+                        input_id="knowledge_" + domain.task_id,
+                        fingerprint=sha256(
+                            domain.model_dump_json().encode()
+                        ).hexdigest(),
+                        chapter_range="跨章节知识：" + domain.task_id,
+                        batch_ids=batch_ids,
+                        chapter_ids=chapter_ids,
+                        payload={
+                            "role": domain.role,
+                            "items": [item.model_dump() for item in domain.items],
+                            "conflicts": report.conflicts,
+                        },
+                    )
+                )
         if not materials:
             failure = AnalysisTaskError(
                 code="outline_has_no_inputs",
@@ -645,7 +858,9 @@ class BatchSummaryRunner:
     def _batch_material(record: BatchSummaryRecord) -> OutlineInputMaterial:
         return OutlineInputMaterial(
             input_id=record.batch.batch_id,
-            fingerprint=record.source_fingerprint,
+            fingerprint=sha256(
+                (record.source_fingerprint + record.summary.model_dump_json()).encode()
+            ).hexdigest(),
             chapter_range=record.batch.chapter_range_label,
             batch_ids=(record.batch.batch_id,),
             chapter_ids=tuple(record.batch.chapter_ids),
@@ -679,13 +894,17 @@ class BatchSummaryRunner:
         return sha256(value.encode()).hexdigest()
 
     @staticmethod
-    def _source_ids(materials: list[OutlineInputMaterial]) -> tuple[list[str], list[str]]:
+    def _source_ids(
+        materials: list[OutlineInputMaterial],
+    ) -> tuple[list[str], list[str]]:
         return (
             list(dict.fromkeys(x for item in materials for x in item.batch_ids)),
             list(dict.fromkeys(x for item in materials for x in item.chapter_ids)),
         )
 
-    def _fits_final(self, plan: AnalysisPlan, materials: list[OutlineInputMaterial]) -> bool:
+    def _fits_final(
+        self, plan: AnalysisPlan, materials: list[OutlineInputMaterial]
+    ) -> bool:
         prompt = build_final_outline_prompt(
             allowed_input_ids=[item.input_id for item in materials],
             items=[item.prompt_item() for item in materials],
@@ -823,14 +1042,28 @@ class BatchSummaryRunner:
         manifest.error = None
         manifest.updated_at = datetime.now(UTC)
 
-    @staticmethod
+    def _summaries_revision(self, task_id: str) -> str:
+        payload = [
+            (
+                r.batch.batch_id,
+                r.summary.model_dump(mode="json"),
+                r.user_edited_at.isoformat() if r.user_edited_at else None,
+            )
+            for r in self.load_summaries(task_id)
+        ]
+        return sha256(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()
+        ).hexdigest()
+
     def _complete_outline(
+        self,
         manifest: AnalysisTaskManifest,
         record: FinalOutlineRecord,
     ) -> None:
         manifest.status = "completed"
         manifest.final_outline_status = "completed"
         manifest.final_outline_artifact = FINAL_OUTLINE_ARTIFACT
+        manifest.summary_revision = self._summaries_revision(manifest.task_id)
         manifest.current_merge_node_id = None
         manifest.error = None
         manifest.updated_at = record.completed_at
@@ -884,6 +1117,11 @@ class AnalysisTaskManager:
         self,
         task_id: str,
         gateway: ModelGateway,
+        *,
+        engine: str = "baseline",
+        goal: str = "分析跨章节事件、人物别名与关系变化、世界观及证据冲突",
+        concurrency: int = 2,
+        review_limit: int = 32,
     ) -> AnalysisTaskManifest:
         async with self._lock:
             existing = self._tasks.get(task_id)
@@ -894,6 +1132,21 @@ class AnalysisTaskManager:
                 task_id,
                 gateway,
             )
+            if (
+                manifest.engine != engine
+                or manifest.analysis_goal != goal
+                or manifest.agent_review_limit != review_limit
+            ):
+                await asyncio.to_thread(self.runner._reset_hierarchy, manifest)
+            if manifest.status != "completed":
+                manifest.status = "queued"
+            manifest.agent_review_limit = review_limit
+            manifest.engine, manifest.analysis_goal, manifest.agent_concurrency = (
+                engine,
+                goal,
+                concurrency,
+            )
+            await asyncio.to_thread(self.runner._save_manifest, manifest)
             if manifest.status == "completed":
                 return manifest
             task = asyncio.create_task(self._execute(task_id, gateway))
@@ -921,10 +1174,53 @@ class AnalysisTaskManager:
     async def outline(self, task_id: str) -> FinalOutlineRecord:
         return await asyncio.to_thread(self.runner.load_outline, task_id)
 
+    async def update_summary(
+        self,
+        task_id: str,
+        batch_id: str,
+        summary: BatchSummaryContent,
+    ) -> BatchSummaryRecord:
+        if await self.is_running(task_id):
+            raise AnalysisTaskAlreadyRunningError(task_id)
+        return await asyncio.to_thread(
+            self.runner.update_summary,
+            task_id,
+            batch_id,
+            summary,
+        )
+
+    async def update_outline(
+        self,
+        task_id: str,
+        outline: NovelOutline,
+    ) -> FinalOutlineRecord:
+        if await self.is_running(task_id):
+            raise AnalysisTaskAlreadyRunningError(task_id)
+        return await asyncio.to_thread(
+            self.runner.update_outline,
+            task_id,
+            outline,
+        )
+
     async def is_running(self, task_id: str) -> bool:
         async with self._lock:
             task = self._tasks.get(task_id)
             return task is not None and not task.done()
+
+    async def cancel(self, task_id: str) -> AnalysisTaskManifest:
+        """Cancel active execution while retaining resumable artifacts."""
+
+        async with self._lock:
+            task = self._tasks.pop(task_id, None)
+        if task is None or task.done():
+            await asyncio.to_thread(self.runner.load_manifest, task_id)
+            raise AnalysisTaskNotRunningError(task_id)
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        manifest = await asyncio.to_thread(self.runner.load_manifest, task_id)
+        if manifest.status in {"queued", "running", "merging", "finalizing"}:
+            manifest = await asyncio.to_thread(self.runner.mark_interrupted, task_id)
+        return manifest
 
     async def discard(self, task_id: str, *, include_plan: bool) -> None:
         async with self._lock:

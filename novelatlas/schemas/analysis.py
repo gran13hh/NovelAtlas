@@ -203,6 +203,7 @@ class BatchSummaryRecord(BaseModel):
     request_id: str | None = None
     usage: ModelUsage | None = None
     completed_at: datetime
+    user_edited_at: datetime | None = None
 
 
 class OutlineSource(BaseModel):
@@ -330,6 +331,7 @@ class FinalOutlineRecord(BaseModel):
     request_id: str | None = None
     usage: ModelUsage | None = None
     completed_at: datetime
+    user_edited_at: datetime | None = None
 
 
 class AnalysisTaskError(BaseModel):
@@ -393,6 +395,12 @@ class AnalysisTaskManifest(BaseModel):
     task_id: str = Field(pattern=r"^[0-9a-f]{32}$")
     plan_id: str = Field(pattern=r"^plan_[0-9a-f]{16}$")
     status: AnalysisTaskStatus
+    engine: Literal["baseline", "langgraph"] = "baseline"
+    graph_node: str | None = None
+    summary_revision: str | None = None
+    analysis_goal: str = Field(default="分析跨章节事件、人物别名与关系变化、世界观及证据冲突", min_length=1, max_length=1000)
+    agent_concurrency: int = Field(default=2, ge=1, le=3)
+    agent_review_limit: int = Field(default=32, ge=1, le=96)
     provider: ModelProviderName
     model: str
     batch_count: int = Field(ge=0)
@@ -444,6 +452,7 @@ class AnalysisProgressSnapshot(BaseModel):
     """Compact secret-free task state emitted through server-sent events."""
 
     event_id: str = Field(pattern=r"^progress_[0-9a-f]{16}$")
+    graph_node: str | None = None
     task_id: str = Field(pattern=r"^[0-9a-f]{32}$")
     status: AnalysisTaskStatus
     phase: AnalysisProgressPhase
@@ -465,3 +474,26 @@ class AnalysisRunRequest(BaseModel):
     """Optional one-run browser model configuration; its key stays in memory."""
 
     config: BrowserModelConfig | None = None
+    engine: Literal["baseline", "langgraph"] = "baseline"
+    goal: str = Field(default="分析跨章节事件、人物别名与关系变化、世界观及证据冲突", min_length=1, max_length=1000)
+    concurrency: int = Field(default=2, ge=1, le=3)
+    review_limit: int = Field(default=32, ge=1, le=96)
+
+    @model_validator(mode="after")
+    def nonblank_goal(self):
+        self.goal = self.goal.strip()
+        if not self.goal:
+            raise ValueError("analysis goal cannot be blank")
+        return self
+
+
+class UpdateBatchSummaryRequest(BaseModel):
+    """User correction for one completed batch summary."""
+
+    summary: BatchSummaryContent
+
+
+class UpdateNovelOutlineRequest(BaseModel):
+    """User correction for the generated final outline."""
+
+    outline: NovelOutline

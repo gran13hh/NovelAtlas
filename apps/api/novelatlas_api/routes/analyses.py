@@ -12,6 +12,7 @@ from novelatlas.analysis import (
     AnalysisTaskAlreadyRunningError,
     AnalysisTaskManager,
     AnalysisTaskNotFoundError,
+    AnalysisTaskNotRunningError,
     plan_analysis,
     watch_analysis_progress,
 )
@@ -24,6 +25,8 @@ from novelatlas.schemas.analysis import (
     AnalysisTaskManifest,
     BatchSummaryRecord,
     FinalOutlineRecord,
+    UpdateBatchSummaryRequest,
+    UpdateNovelOutlineRequest,
 )
 from novelatlas.schemas.parsing import ParsedDocument
 from novelatlas.services.temporary_storage import (
@@ -31,6 +34,8 @@ from novelatlas.services.temporary_storage import (
     TemporaryUploadStorage,
     UploadNotFoundError,
 )
+from novelatlas.skills.batch_summary import BatchSummaryOutputError
+from novelatlas.skills.hierarchical_outline import HierarchicalOutlineOutputError
 
 from ..config import Settings
 from ..dependencies import (
@@ -43,6 +48,7 @@ from ..dependencies import (
 
 router = APIRouter(prefix="/api/analyses", tags=["analyses"])
 TaskId = Annotated[str, ApiPath(pattern=r"^[0-9a-f]{32}$")]
+BatchId = Annotated[str, ApiPath(pattern=r"^batch_[0-9a-f]{16}$")]
 Storage = Annotated[TemporaryUploadStorage, Depends(get_upload_storage)]
 AnalysisSettings = Annotated[Settings, Depends(get_settings)]
 TaskManager = Annotated[AnalysisTaskManager, Depends(get_analysis_task_manager)]
@@ -132,7 +138,7 @@ async def run_analysis(
         else server_gateway
     )
     try:
-        return await tasks.start(task_id, gateway)
+        return await tasks.start(task_id, gateway, engine=request.engine, goal=request.goal, concurrency=request.concurrency, review_limit=request.review_limit)
     except AnalysisTaskAlreadyRunningError as error:
         raise HTTPException(status_code=409, detail="分析任务已经在运行") from error
     except (AnalysisPlanMismatchError, ArtifactNotFoundError) as error:
@@ -150,6 +156,23 @@ async def get_analysis_status(
 
     try:
         return await tasks.get(task_id)
+    except AnalysisTaskNotFoundError as error:
+        raise HTTPException(status_code=404, detail="尚未启动分析任务") from error
+    except UploadNotFoundError as error:
+        raise HTTPException(status_code=404, detail="上传任务不存在或已过期") from error
+
+
+@router.post("/{task_id}/cancel", response_model=AnalysisTaskManifest)
+async def cancel_analysis(
+    task_id: TaskId,
+    tasks: TaskManager,
+) -> AnalysisTaskManifest:
+    """Cancel active execution while keeping completed checkpoints resumable."""
+
+    try:
+        return await tasks.cancel(task_id)
+    except AnalysisTaskNotRunningError as error:
+        raise HTTPException(status_code=409, detail="分析任务当前未运行") from error
     except AnalysisTaskNotFoundError as error:
         raise HTTPException(status_code=404, detail="尚未启动分析任务") from error
     except UploadNotFoundError as error:
@@ -223,6 +246,32 @@ async def get_batch_summaries(
         raise HTTPException(status_code=404, detail="上传任务不存在或已过期") from error
 
 
+@router.patch(
+    "/{task_id}/summaries/{batch_id}",
+    response_model=BatchSummaryRecord,
+)
+async def update_batch_summary(
+    task_id: TaskId,
+    batch_id: BatchId,
+    request: UpdateBatchSummaryRequest,
+    tasks: TaskManager,
+) -> BatchSummaryRecord:
+    """Save a user correction and invalidate derived hierarchy artifacts."""
+
+    try:
+        return await tasks.update_summary(task_id, batch_id, request.summary)
+    except AnalysisTaskAlreadyRunningError as error:
+        raise HTTPException(status_code=409, detail="分析运行期间不能修改概括") from error
+    except AnalysisTaskNotFoundError as error:
+        raise HTTPException(status_code=404, detail="尚未启动分析任务") from error
+    except ArtifactNotFoundError as error:
+        raise HTTPException(status_code=404, detail="该批次概括尚未生成") from error
+    except BatchSummaryOutputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except UploadNotFoundError as error:
+        raise HTTPException(status_code=404, detail="上传任务不存在或已过期") from error
+
+
 @router.get(
     "/{task_id}/outline",
     response_model=FinalOutlineRecord,
@@ -239,6 +288,31 @@ async def get_final_outline(
         raise HTTPException(status_code=404, detail="尚未启动分析任务") from error
     except ArtifactNotFoundError as error:
         raise HTTPException(status_code=409, detail="全书细纲尚未生成") from error
+    except UploadNotFoundError as error:
+        raise HTTPException(status_code=404, detail="上传任务不存在或已过期") from error
+
+
+@router.patch(
+    "/{task_id}/outline",
+    response_model=FinalOutlineRecord,
+)
+async def update_final_outline(
+    task_id: TaskId,
+    request: UpdateNovelOutlineRequest,
+    tasks: TaskManager,
+) -> FinalOutlineRecord:
+    """Save a user correction to a completed final outline."""
+
+    try:
+        return await tasks.update_outline(task_id, request.outline)
+    except AnalysisTaskAlreadyRunningError as error:
+        raise HTTPException(status_code=409, detail="分析运行期间不能修改细纲") from error
+    except AnalysisTaskNotFoundError as error:
+        raise HTTPException(status_code=404, detail="尚未启动分析任务") from error
+    except ArtifactNotFoundError as error:
+        raise HTTPException(status_code=409, detail="全书细纲尚未生成") from error
+    except HierarchicalOutlineOutputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     except UploadNotFoundError as error:
         raise HTTPException(status_code=404, detail="上传任务不存在或已过期") from error
 

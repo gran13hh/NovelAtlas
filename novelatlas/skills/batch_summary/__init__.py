@@ -5,6 +5,7 @@ from .skill import (
     BatchSummaryOutputError,
     build_batch_summary_prompt,
     parse_batch_summary_response,
+    validate_batch_summary_sources,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "BatchSummaryOutputError",
     "build_batch_summary_prompt",
     "parse_batch_summary_response",
+    "validate_batch_summary_sources",
 ]

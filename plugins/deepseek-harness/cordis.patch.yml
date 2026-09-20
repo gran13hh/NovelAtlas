@@ -1,0 +1,7 @@
+- insert:
+    - id: novelatlas
+      name: dsh-novelatlas
+      config:
+        apiBaseUrl: http://127.0.0.1:8000
+        timeoutMs: 30000
+        exportDirectory: ./novelatlas-exports

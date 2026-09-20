@@ -198,9 +198,10 @@ function ProviderForm({
           <select
             value={config.provider}
             onChange={(event) => {
-              const provider = event.target.value as 'mock' | 'openai'
+              const provider = event.target.value as 'mock' | 'openai' | 'deepseek'
               update({
                 provider,
+                base_url: provider === 'deepseek' ? 'https://api.deepseek.com/v1' : provider === 'openai' ? 'https://api.openai.com/v1' : config.base_url,
                 model:
                   provider === 'mock'
                     ? 'novelatlas-mock-text'
@@ -212,7 +213,8 @@ function ProviderForm({
             className="mt-1.5 w-full rounded-xl border border-black/12 bg-white px-3.5 py-3 text-sm text-[#17221b] outline-none transition focus:border-[#55705e] focus:ring-3 focus:ring-[#55705e]/10"
           >
             <option value="mock">本地 Mock</option>
-            <option value="openai">OpenAI / 兼容接口</option>
+            <option value="openai">OpenAI Responses / 兼容接口</option>
+            <option value="deepseek">DeepSeek Chat Completions</option>
           </select>
         </label>
 

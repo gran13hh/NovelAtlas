@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "alias_conflict",
+      "file": "tests/fixtures/novels/agent_demo.txt",
+      "goal": "分析林舟的别名、与沈月的关系变化、密信及生死冲突",
+      "retrieval": [
+        {
+          "query": "林舟 阿舟",
+          "quote": "林舟又名阿舟"
+        },
+        {
+          "query": "沈月 决裂",
+          "quote": "沈月发现密信后与林舟决裂"
+        },
+        {
+          "query": "林舟 活着",
+          "quote": "林舟活着来到城门"
+        },
+        {
+          "query": "青城 禁止私斗",
+          "quote": "青城禁止私斗"
+        }
+      ],
+      "gold_facts": [
+        "林舟的别名是阿舟",
+        "林舟与沈月先结盟后决裂又重新结盟",
+        "密信是伪造的",
+        "第三章林舟仍活着",
+        "青城禁止私斗"
+      ],
+      "unsupported_claims": [
+        "林舟已死",
+        "沈月杀死林舟"
+      ]
+    },
+    {
+      "id": "no_headings",
+      "file": "tests/fixtures/novels/sample_no_headings.txt",
+      "goal": "分析无章节标题文本中明确出现的人物和事件",
+      "retrieval": [
+        {
+          "query": "沈砚 苏槿 旧书铺",
+          "quote": "在旧书铺门前第一次见到了苏槿"
+        },
+        {
+          "query": "匿名信 客栈",
+          "quote": "一封没有署名的信被送进客栈"
+        }
+      ],
+      "gold_facts": [
+        "沈砚在旧书铺前初见苏槿",
+        "三天后匿名信被送进客栈",
+        "信上写着不要回头"
+      ],
+      "unsupported_claims": [
+        "苏槿寄出了匿名信"
+      ]
+    },
+    {
+      "id": "chapter_format",
+      "file": "tests/fixtures/novels/sample_utf8.txt",
+      "goal": "分析有章节标题文本中的事件与人物",
+      "retrieval": [
+        {
+          "query": "沈砚 苏槿 旧书铺",
+          "quote": "在旧书铺门前第一次见到了苏槿"
+        },
+        {
+          "query": "匿名信 客栈",
+          "quote": "一封没有署名的信被送进客栈"
+        }
+      ],
+      "gold_facts": [
+        "沈砚在旧书铺前初见苏槿",
+        "三天后匿名信被送进客栈",
+        "信上写着不要回头"
+      ],
+      "unsupported_claims": [
+        "苏槿寄出了匿名信"
+      ]
+    }
+  ]
+}

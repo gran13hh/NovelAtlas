@@ -26,7 +26,7 @@ function isProviderConfig(value: unknown): value is BrowserProviderConfig {
   if (typeof value !== 'object' || value === null) return false
   return (
     'provider' in value &&
-    (value.provider === 'mock' || value.provider === 'openai') &&
+    (value.provider === 'mock' || value.provider === 'openai' || value.provider === 'deepseek') &&
     'model' in value &&
     typeof value.model === 'string' &&
     'base_url' in value &&

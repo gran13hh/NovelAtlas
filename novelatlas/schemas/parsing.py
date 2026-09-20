@@ -62,6 +62,8 @@ class ParsedChapter(BaseModel):
     ordinal: int = Field(ge=1)
     title: str
     heading_kind: Literal["chapter", "volume", "special", "fallback"]
+    volume_id: str | None = None
+    volume_title: str | None = None
     heading_start_char: int = Field(ge=0)
     heading_end_char: int = Field(ge=0)
     content_start_char: int = Field(ge=0)
@@ -80,10 +82,31 @@ class ParsedChapter(BaseModel):
         return self
 
 
+class ParsedVolume(BaseModel):
+    """A volume-level container associated with its child chapters."""
+
+    volume_id: str
+    ordinal: int = Field(ge=1)
+    title: str
+    heading_start_char: int = Field(ge=0)
+    heading_end_char: int = Field(ge=0)
+    content_start_char: int = Field(ge=0)
+    content_end_char: int = Field(ge=0)
+    chapter_ids: list[str]
+
+    @model_validator(mode="after")
+    def validate_ranges(self) -> "ParsedVolume":
+        if self.heading_end_char < self.heading_start_char:
+            raise ValueError("volume heading range is reversed")
+        if self.content_end_char < self.content_start_char:
+            raise ValueError("volume content range is reversed")
+        return self
+
+
 class ParsedDocument(BaseModel):
     """Persisted parse manifest returned to the preview interface."""
 
-    schema_version: Literal[1] = 1
+    schema_version: Literal[1, 2] = 2
     task_id: str = Field(pattern=r"^[0-9a-f]{32}$")
     filename: str
     tokenizer: str
@@ -92,6 +115,7 @@ class ParsedDocument(BaseModel):
     chapter_count: int = Field(ge=1)
     chunk_count: int = Field(ge=0)
     used_fallback_chapter: bool
+    volumes: list[ParsedVolume] = Field(default_factory=list)
     chapters: list[ParsedChapter]
     chunks: list[TextChunk]
 

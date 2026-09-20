@@ -7,6 +7,7 @@ from .tasks import (
     AnalysisTaskAlreadyRunningError,
     AnalysisTaskManager,
     AnalysisTaskNotFoundError,
+    AnalysisTaskNotRunningError,
     BatchSummaryRunner,
 )
 
@@ -16,6 +17,7 @@ __all__ = [
     "AnalysisTaskAlreadyRunningError",
     "AnalysisTaskManager",
     "AnalysisTaskNotFoundError",
+    "AnalysisTaskNotRunningError",
     "BatchSummaryRunner",
     "PlannedBatchMaterial",
     "build_progress_snapshot",
